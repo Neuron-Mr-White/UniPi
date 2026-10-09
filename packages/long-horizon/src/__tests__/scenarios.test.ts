@@ -71,7 +71,12 @@ function fakePi(): FakePi {
 
 function world(settings: LongHorizonSettings = DEFAULT_SETTINGS): World {
   const dir = mkdtempSync(join(tmpdir(), "lh-scenario-"));
-  const owner = new OwnerCoordinator({ statePath: () => join(dir, "owner.json") });
+  // Same single-hook wiring as index.ts: every owner transition reaches the gate.
+  let gateRef: Gate | undefined;
+  const owner = new OwnerCoordinator({
+    statePath: () => join(dir, "owner.json"),
+    onChange: (_snapshot, event) => gateRef?.onOwnerChanged(event),
+  });
   const machine = new GoalMachine({ statePath: () => join(dir, "goal.json") });
   const toolset = new GoalToolset({ machine, owner });
   const pi = fakePi();
@@ -95,6 +100,7 @@ function world(settings: LongHorizonSettings = DEFAULT_SETTINGS): World {
       return Boolean(owner.suspend(`paused(superseded_by:${mode})`));
     },
   });
+  gateRef = gate;
   gate.register(pi as never);
   const continuation = new GoalContinuation({
     machine,

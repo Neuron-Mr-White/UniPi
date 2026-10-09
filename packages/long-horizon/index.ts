@@ -402,7 +402,10 @@ export default function longHorizon(pi: ExtensionAPI): void {
   // Crash recovery: repair, don't resume — reload durable state so the gate
   // reattaches the owner's tool surface; the continuation arms a recovery
   // fragment for the first post-restart turn.
-  pi.on("session_start", () => {
+  pi.on("session_start", (event) => {
+    // A sticky mode belongs to the session that picked it (UNI-165).
+    const reason = (event as { reason?: string } | undefined)?.reason;
+    if (reason === "new" || reason === "resume" || reason === "fork") gate.dropStickyWorkMode();
     // Mode tools start OFF; a restored active owner re-syncs them ON below.
     gate.resetModeTools();
     // Point the display at the sticky session mode / default BEFORE the

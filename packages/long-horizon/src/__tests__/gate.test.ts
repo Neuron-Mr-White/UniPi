@@ -117,16 +117,125 @@ test("fragment is deterministic and carries mode + owner status", () => {
 
 // ── gate resolution state ────────────────────────────────────────────────
 
-test("explicit override beats owner, parks it, and is consumed once", async () => {
+test("explicit override beats owner, parks it, and stays sticky for later turns", async () => {
   const { gate, owner, dir } = harness();
   owner.activate("goal", "g");
   gate.setExplicit("swarm");
   const first = await gate.resolveForTurn("do the thing");
   assert.deepEqual(first, { mode: "swarm", source: "explicit" });
   assert.equal(owner.getParked()?.kind, "goal"); // suspend-and-switch
+  // UNI-165: the user's next message keeps the chosen mode (sticky).
   const second = await gate.resolveForTurn("another message");
-  assert.equal(second.mode, "none"); // owner parked → default mode (judge off)
-  assert.equal(second.source, "default");
+  assert.deepEqual(second, { mode: "swarm", source: "explicit", sticky: true });
+  rmSync(dir, { recursive: true, force: true });
+});
+
+// ── UNI-165: the mode survives a clarifying question ──────────────────────
+
+function wiredHarness() {
+  const dir = mkdtempSync(join(tmpdir(), "lh-gate-sticky-"));
+  let gateRef: Gate | undefined;
+  const owner = new OwnerCoordinator({
+    statePath: () => join(dir, "state.json"),
+    // Same single-hook wiring as index.ts.
+    onChange: (_snapshot, event) => gateRef?.onOwnerChanged(event),
+  });
+  const gate = new Gate({ owner, loadSettings: () => DEFAULT_SETTINGS, env: {} });
+  gateRef = gate;
+  return { gate, owner, dir };
+}
+
+test("UNI-165: /unipi:graph → model asks a question (no owner yet) → the answer stays in graph mode", async () => {
+  const { gate, dir } = wiredHarness();
+  const appended: Array<{ mode: string; source: string }> = [];
+  const pi = fakePi(appended);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  gate.register(pi as any);
+  gate.setExplicit("graph");
+  await pi.fire("build it — but ask me first which language");
+  assert.equal(gate.current()?.mode, "graph");
+  assert.equal(gate.displayMode(), "graph");
+  // The model asked in plain text / ask_user and ended the turn. The user answers:
+  await pi.fire("Python");
+  assert.equal(gate.current()?.mode, "graph", "the answer turn keeps graph mode");
+  assert.equal(gate.displayMode(), "graph", "the footer keeps Graph Mode");
+  expectExactlyModeTools(pi.activeTools, ["view_agent_graph", "update_agent_graph", "graph_output", "todowrite"]);
+  await pi.fire("and one more follow-up");
+  assert.equal(gate.current()?.mode, "graph");
+  // Badge printed once for the command, not for the sticky follow-ups.
+  assert.equal(appended.filter((a) => a.mode === "graph").length, 1);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("UNI-165: the sticky mode ends when its owner settles (work ends by design)", async () => {
+  const { gate, owner, dir } = wiredHarness();
+  const pi = fakePi([]);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  gate.register(pi as any);
+  gate.setExplicit("graph");
+  await pi.fire("plan and run the graph");
+  owner.activate("graph", "task");
+  await pi.fire("Python");
+  assert.equal(gate.current()?.mode, "graph");
+  owner.finish("settled");
+  assert.equal(gate.displayMode(), "none", "footer drops to the default at settlement");
+  await pi.fire("unrelated question");
+  assert.deepEqual(gate.current(), { mode: "none", source: "default" });
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("UNI-165: switching modes or /unipi:regular replaces the sticky mode", async () => {
+  const { gate, dir } = wiredHarness();
+  const pi = fakePi([]);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  gate.register(pi as any);
+  gate.setExplicit("graph");
+  await pi.fire("a");
+  gate.setExplicit("swarm");
+  await pi.fire("b");
+  await pi.fire("c");
+  assert.equal(gate.current()?.mode, "swarm");
+  gate.setSessionMode("none");
+  await pi.fire("d");
+  assert.equal(gate.current()?.mode, "none");
+  assert.equal(gate.displayMode(), "none");
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("UNI-165: a new session drops a sticky work mode but keeps the /unipi:regular pin", async () => {
+  const { gate, dir } = wiredHarness();
+  const pi = fakePi([]);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  gate.register(pi as any);
+  gate.setExplicit("graph");
+  await pi.fire("a");
+  gate.dropStickyWorkMode();
+  gate.resetDisplay("none");
+  assert.equal(gate.displayMode(), "none");
+  await pi.fire("fresh session prompt");
+  assert.deepEqual(gate.current(), { mode: "none", source: "default" });
+  gate.setSessionMode("none");
+  gate.dropStickyWorkMode();
+  await pi.fire("b");
+  assert.deepEqual(gate.current(), { mode: "none", source: "explicit", sticky: true });
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("UNI-165: an owner superseded by a new sticky mode parks without dropping that new mode", async () => {
+  const { gate, owner, dir } = wiredHarness();
+  const pi = fakePi([]);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  gate.register(pi as any);
+  owner.activate("goal", "g");
+  gate.setExplicit("graph");
+  await pi.fire("switch to graph"); // parks the goal owner
+  assert.equal(owner.getParked()?.kind, "goal");
+  await pi.fire("answer");
+  assert.equal(gate.current()?.mode, "graph", "the goal park does not clear graph's sticky mode");
+  // Resuming the parked goal hands the session back to goal.
+  owner.resume();
+  await pi.fire("continue");
+  assert.deepEqual(gate.current(), { mode: "goal", source: "owner" });
   rmSync(dir, { recursive: true, force: true });
 });
 
@@ -287,8 +396,12 @@ test("register(): session_start starts tools off, explicit goal turns them on, a
   await pi.fire("start pursuing the objective");
   expectExactlyModeTools(pi.activeTools, ["create_goal", "get_goal", "update_goal", "todowrite"]);
 
-  // Next plain turn (judge off → default none) → off again.
+  // The explicit mode is sticky (UNI-165): the next plain turn keeps it…
   await pi.fire("just answer this");
+  expectExactlyModeTools(pi.activeTools, ["create_goal", "get_goal", "update_goal", "todowrite"]);
+  // …until /unipi:regular turns them off.
+  gate.setSessionMode("none");
+  await pi.fire("plain again");
   assert.deepEqual(modeToolsIn(pi.activeTools), []);
   rmSync(dir, { recursive: true, force: true });
 });

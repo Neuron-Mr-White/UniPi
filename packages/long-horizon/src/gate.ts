@@ -181,11 +181,15 @@ export class Gate {
     return this.display;
   }
 
-  /** Commands call this before sendUserMessage to force next-turn mode (one-shot;
-   *  an explicit command also escapes a sticky session mode). */
+  /** Commands call this before sendUserMessage to force the mode. The mode is
+   *  STICKY (UNI-165): it holds for every later turn until the user picks
+   *  another mode (/unipi:<mode>, /unipi:regular) or the work it started ends
+   *  by design (its owner settles or parks — see onOwnerChanged). A one-shot
+   *  override lost the mode whenever the model asked a clarifying question
+   *  before activating its owner: the user's answer resolved to the default. */
   setExplicit(mode: LhMode): void {
     this.pendingExplicit = mode;
-    this.sessionOverride = null;
+    this.sessionOverride = mode;
     // The command's own next turn re-resolves and re-syncs; syncing now covers
     // the gap where the kickoff rides a path that never re-enters
     // before_agent_start (mid-run stash delivery → agent.continue()).
@@ -225,8 +229,20 @@ export class Gate {
       // the next turn may never come. Applied always (pi/child state is
       // irrelevant for the display value).
       if (event.type === "finished" || event.type === "suspended") {
+        // The work a sticky mode started ended by design (settled, stopped,
+        // or parked): drop the sticky mode so the session returns to its
+        // default. A different sticky mode (e.g. the one that superseded and
+        // parked this owner, or /unipi:regular) is kept.
+        if (this.sessionOverride === modeForOwnerKind(event.owner.kind)) this.sessionOverride = null;
         this.display = this.sessionOverride ?? (this.deps.loadSettings?.() ?? loadSettings()).defaultMode;
         this.deps.onDisplayChanged?.();
+      }
+      if (event.type === "activated" || event.type === "resumed") {
+        // An owner taking the session now holds the mode itself (owner
+        // resolution), so the sticky mode hands over to it. Also keeps a
+        // conflicting sticky mode (e.g. a kanboard ralph-start runner after
+        // /unipi:regular) from parking the owner that just started.
+        this.sessionOverride = null;
       }
       if (!this.pi) return;
       if (event.type !== "activated" && event.type !== "resumed" && event.type !== "restored") return;
@@ -252,6 +268,14 @@ export class Gate {
     }
   }
 
+  /** A different session (new/resume/fork) starts in its own mode: drop a
+   *  sticky long-horizon mode the previous session picked (UNI-165). The
+   *  /unipi:regular pin ("none") is kept, as before. */
+  dropStickyWorkMode(): void {
+    if (this.sessionOverride !== null && this.sessionOverride !== "none") this.sessionOverride = null;
+    this.pendingExplicit = null;
+  }
+
   /** Session start: point the display at the sticky session mode if one
    *  survives, else the settings default — before owner.restore()'s onChange
    *  publishes LH_STATE. */
@@ -275,7 +299,8 @@ export class Gate {
     const settings = this.deps.loadSettings?.() ?? loadSettings();
     // Explicit switch away from an active owner suspends it first (max-1
     // park slot; a held slot refuses the override and the owner keeps mode).
-    let explicit = this.sessionOverride ?? this.pendingExplicit;
+    const fresh = this.pendingExplicit;
+    let explicit = fresh ?? this.sessionOverride;
     if (explicit) {
       const active = this.deps.owner.getActive();
       if (active && modeForOwnerKind(active.kind) !== explicit) {
@@ -301,7 +326,9 @@ export class Gate {
       mode: resolution.mode,
       source: resolution.source,
       ...(resolution.confidence !== undefined ? { confidence: resolution.confidence } : {}),
-      ...(this.sessionOverride !== null && explicit === this.sessionOverride ? { sticky: true } : {}),
+      // Sticky = carried over from an earlier command, not this turn's own
+      // command (the badge reprints only for a fresh explicit command).
+      ...(fresh === null && this.sessionOverride !== null && explicit === this.sessionOverride ? { sticky: true } : {}),
     };
     return this.turn;
   }
