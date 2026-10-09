@@ -127,7 +127,7 @@ function fakePi() {
   const emit = async (name: string, event: any = {}) => {
     for (const h of handlers.get(name) ?? []) await h(event, ctx);
   };
-  return { pi, ctx, emit, sent, branch, calls, sessionOps, setIdle: (v: boolean) => (idle = v) };
+  return { pi, ctx, emit, sent, branch, tree, calls, sessionOps, setIdle: (v: boolean) => (idle = v) };
 }
 
 /** Fake SessionManager.list/listAll deps for `sessions{}` (the real bridge talks to disk). */
@@ -333,6 +333,40 @@ describe("app bridge over a unix socket", () => {
     assert.equal(tree.nodes.find((n: any) => n.id === "m2").current, false);
     assert.equal(tree.nodes.find((n: any) => n.id === "m3").onPath, true);
     assert.equal(tree.nodes.find((n: any) => n.id === "m3").current, true);
+  });
+
+  it("tree{} survives a 20k-deep session and fits one line (UNI-194: stack overflow + oversized line)", async () => {
+    const saved = f.tree.splice(0, f.tree.length);
+    let parent: any = null;
+    const root: any[] = [];
+    for (let i = 0; i < 20000; i++) {
+      const kind = i % 5;
+      const entry =
+        kind === 0
+          ? { id: `d${i}`, parentId: parent?.entry.id ?? null, type: "message", timestamp: "t", message: { role: "user", content: `ask ${i} ${"x".repeat(150)}` } }
+          : kind === 1
+            ? { id: `d${i}`, parentId: parent.entry.id, type: "message", timestamp: "t", message: { role: "assistant", content: [{ type: "toolCall" }] } }
+            : kind === 2
+              ? { id: `d${i}`, parentId: parent.entry.id, type: "message", timestamp: "t", message: { role: "toolResult", content: "y".repeat(400) } }
+              : { id: `d${i}`, parentId: parent.entry.id, type: "custom", timestamp: "t", customType: "footer" };
+      const node = { entry, children: [] as any[] };
+      if (parent) parent.children.push(node);
+      else root.push(node);
+      parent = node;
+    }
+    f.tree.push(...root);
+    try {
+      c.send({ t: "tree", ref: "deep" });
+      const reply = await c.next((m) => (m.t === "tree" || m.t === "error") && m.ref === "deep");
+      assert.equal(reply.t, "tree", reply.message);
+      assert.ok(reply.nodes.length > 1000, `kept ${reply.nodes.length}`);
+      assert.ok(Buffer.byteLength(JSON.stringify(reply)) < 900 * 1024);
+      assert.ok(!reply.nodes.some((n: any) => n.kind === "custom"), "bookkeeping rows dropped");
+      const ids = new Set(reply.nodes.map((n: any) => n.id));
+      assert.ok(reply.nodes.every((n: any) => n.parentId === null || ids.has(n.parentId)), "parents re-attached to kept rows");
+    } finally {
+      f.tree.splice(0, f.tree.length, ...saved);
+    }
   });
 
   it("session_new / session_resume / session_fork / tree_go run through the hidden command with a real command context", async () => {

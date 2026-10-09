@@ -648,6 +648,63 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
     return { items, more: filtered.length > cap };
   };
 
+  /**
+   * Keeps a `tree` reply under one socket line (LINE_BUDGET; the host drops
+   * longer lines and the phone saw an empty tree on a 16k-entry session).
+   * 1. Drop rows no phone filter ever shows (pi's /tree hides them too):
+   *    `custom`/`usage`/`label` bookkeeping and text-less assistant rows,
+   *    unless current or a fork point; their children re-attach upward.
+   * 2. Still too big: shorter previews (tool results first).
+   * 3. Still too big: keep the newest rows plus the current path.
+   */
+  const fitTree = (nodes: TreeNode[]): TreeNode[] => {
+    const budget = LINE_BUDGET - 16 * 1024;
+    const childCount = new Map<string, number>();
+    for (const n of nodes) if (n.parentId) childCount.set(n.parentId, (childCount.get(n.parentId) ?? 0) + 1);
+    const hidden = (n: TreeNode) =>
+      !n.current &&
+      (childCount.get(n.id) ?? 0) < 2 &&
+      !n.label &&
+      (n.kind === "custom" || n.kind === "usage" || n.kind === "label" || (n.kind === "assistant" && !n.preview.trim()));
+    const byId = new Map(nodes.map((n) => [n.id, n]));
+    const lift = (parentId: string | null): string | null => {
+      let id = parentId;
+      const seen = new Set<string>();
+      while (id && !seen.has(id)) {
+        seen.add(id);
+        const p = byId.get(id);
+        if (!p || !hidden(p)) return id;
+        id = p.parentId;
+      }
+      return null;
+    };
+    let out = nodes.filter((n) => !hidden(n)).map((n) => ({ ...n, parentId: lift(n.parentId) }));
+    if (jsonBytes(out) <= budget) return out;
+    for (const max of [60, 30]) {
+      out = out.map((n) => ({ ...n, preview: n.kind === "toolResult" ? n.preview.slice(0, Math.min(max, 24)) : n.preview.slice(0, max), timestamp: undefined }));
+      if (jsonBytes(out) <= budget) return out;
+    }
+    // Newest rows win; the current path always stays.
+    const keep = new Set<string>();
+    let bytes = 0;
+    for (const n of out) if (n.onPath) { keep.add(n.id); bytes += jsonBytes(n) + 1; }
+    for (let i = out.length - 1; i >= 0 && bytes < budget; i--) {
+      const n = out[i]!;
+      if (keep.has(n.id)) continue;
+      bytes += jsonBytes(n) + 1;
+      if (bytes < budget) keep.add(n.id);
+    }
+    const kept = out.filter((n) => keep.has(n.id));
+    const keptIds = new Set(kept.map((n) => n.id));
+    const outById = new Map(out.map((n) => [n.id, n]));
+    return kept.map((n) => {
+      let id = n.parentId;
+      const seen = new Set<string>();
+      while (id && !keptIds.has(id) && !seen.has(id)) { seen.add(id); id = outById.get(id)?.parentId ?? null; }
+      return { ...n, parentId: id && keptIds.has(id) ? id : null };
+    });
+  };
+
   /** `tree{}`: every branch, previews only, the current branch and leaf marked. */
   const buildTree = (): TreeNode[] => {
     const c = ctx!;
@@ -656,7 +713,12 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
     const onPath = new Set<string>();
     if (leafId) for (const e of sm.getBranch(leafId)) onPath.add(e.id);
     const out: TreeNode[] = [];
-    const visit = (node: { entry: unknown; children: unknown[]; label?: string }) => {
+    type Node = { entry: unknown; children: unknown[]; label?: string };
+    // Iterative pre-order: a long session is a chain thousands deep, and a
+    // recursive walk overflowed the stack (the phone showed an empty tree).
+    const stack: Node[] = [...(sm.getTree() as Node[])].reverse();
+    while (stack.length > 0) {
+      const node = stack.pop()!;
       const e = node.entry as { id: string; parentId: string | null; type: string; timestamp?: string; message?: { role?: string } };
       out.push({
         id: e.id,
@@ -668,10 +730,10 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
         onPath: onPath.has(e.id),
         current: e.id === leafId,
       });
-      for (const child of node.children as Array<{ entry: unknown; children: unknown[]; label?: string }>) visit(child);
-    };
-    for (const root of sm.getTree()) visit(root as never);
-    return out;
+      const children = node.children as Node[];
+      for (let i = children.length - 1; i >= 0; i--) stack.push(children[i]!);
+    }
+    return fitTree(out);
   };
 
   /** Delivers one bridge-queued ("after it ends") item as a fresh prompt
