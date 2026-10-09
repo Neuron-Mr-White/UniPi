@@ -265,6 +265,27 @@ describe("UNI-160 control centre: fusion / work / stats / info", () => {
     assert.equal(cleared.status, undefined);
   });
 
+  it("UNI-212: leaving Fusion (FUSION_STATUS cleared / a model_select) pushes a state with the fresh preset, so the phone stops marking Fusion current", async () => {
+    const { bus, UNIPI_EVENTS } = await import("@pi-unipi/core");
+    const picker: any = { leads: [], sidekicks: [], default: {}, effort: {}, active: { kind: "fusion", lead: "p/lead", sidekick: "p/side" } };
+    fakeFusionApi(picker);
+    picker.active = { kind: "single", model: "p/m" };
+    bus.emit(UNIPI_EVENTS.FUSION_STATUS, undefined as never);
+    const state = await c.next((m) => m.t === "state" && m.fusion);
+    assert.deepEqual(state.fusion.active, { kind: "single", model: "p/m" });
+    picker.active = { kind: "single", model: "q/n" };
+    await f.emit("model_select", { model: { provider: "q", id: "n" } });
+    const again = await c.next((m) => m.t === "state" && m.fusion?.active?.model === "q/n");
+    assert.equal(again.fusion.active.kind, "single");
+  });
+
+  it("UNI-212: no Fusion installed — a model_select state push carries no fusion key", async () => {
+    delete (globalThis as any)[Symbol.for("unipi.fusion.api")];
+    await f.emit("model_select", { model: { provider: "q", id: "n" } });
+    const state = await c.next((m) => m.t === "state");
+    assert.equal("fusion" in state, false);
+  });
+
   it("work list: bg tasks + subagents + sidekick merge into one list, running pinned first", async () => {
     const { tasks } = fakeBgRegistry();
     tasks.set("b1", { id: "b1", name: "build", command: "npm run build", status: "completed", startTime: 1000, endTime: 2000, log: "done\n" });

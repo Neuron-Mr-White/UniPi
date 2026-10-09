@@ -208,7 +208,8 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
   const tuiQueue: Array<{ id: string; text: string; mode: "steer" | "followUp"; images?: Array<{ mime: string; data: string } | { mime: string; path: string }> }> = [];
   /** The bridge's own queue ("after it ends"): phone-only, editable/removable/reorderable/promotable,
    * delivered one at a time on `agent_end`. Survives phone reconnects (sent in `hello`), not a pi restart. */
-  const bridgeQueue: Array<{ id: string; text: string; images?: Array<{ mime: string; data: string } | { mime: string; path: string }> }> = [];
+  type BridgeQueued = { id: string; text: string; images?: Array<{ mime: string; data: string } | { mime: string; path: string }>; retry?: boolean };
+  const bridgeQueue: BridgeQueued[] = [];
   let queueSeq = 0;
   const nextQueueId = () => `q${process.pid}-${++queueSeq}`;
   /** Every queue row the phone sees: TUI items first (oldest-submitted order), then bridge items —
@@ -450,6 +451,14 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
     return { leads: picker.leads, sidekicks: picker.sidekicks, curated: picker.curated, default: picker.default, effort: picker.effort, active: picker.active };
   };
 
+  /** A `state` push carrying the Fusion preset (its `active` selection)
+   * when Fusion is installed; no `fusion` key otherwise (the phone reads a
+   * missing key as "unchanged"). */
+  const stateWithFusion = () => {
+    const fusion = fusionPreset();
+    send({ t: "state", ...runState(), ...(fusion ? { fusion } : {}) } as OutMsg);
+  };
+
   const workItems = (): WorkItemInfo[] => {
     try {
       return listWorkItems();
@@ -619,6 +628,9 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
       bridgeVersion: BRIDGE_VERSION,
       startedAt: startedAt,
       waiting: effectiveWaiting() ?? null,
+      // UNI-212: pi's own run state for the host's chat_list — herdr's
+      // pane agent_status lags/misses runs, the list showed busy pis "Idle".
+      running,
     };
     try {
       const file = join(dir, `${process.pid}.json`);
@@ -743,19 +755,45 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
     return fitTree(out);
   };
 
-  /** Delivers one bridge-queued ("after it ends") item as a fresh prompt
-   * (pi is idle: agent_end/now just fired or the force-abort above settled). */
-  const deliverQueued = (q: { id: string; text: string; images?: Array<{ mime: string; data: string } | { mime: string; path: string }> }) => {
+  /** UNI-212: a bridge-queued item handed to pi but not yet seen in an
+   * `input` event. pi's `sendUserMessage` is fire-and-forget (a rejected
+   * prompt only reaches pi's own error log), so an item is never trusted as
+   * delivered until pi echoes it; otherwise it goes back to the queue. */
+  let inflight: { item: BridgeQueued; timer: NodeJS.Timeout } | undefined;
+  const INFLIGHT_MS = 8_000;
+  const restoreInflight = () => {
+    const pending = inflight;
+    inflight = undefined;
+    if (!pending) return;
+    clearTimeout(pending.timer);
+    // Back at the front: delivered again on the next settle (or by hand from
+    // the phone's queue strip). `retry` marks it so a late `input` echo of
+    // the first attempt removes it instead of sending it twice.
+    bridgeQueue.unshift({ ...pending.item, retry: true });
+    send({ t: "queue", items: queueView() });
+  };
+
+  /** Delivers one bridge-queued ("after it ends") item. `followUp`, not a
+   * bare prompt: pi ignores `deliverAs` while idle (it starts a run), and if
+   * something else started a run in the meantime the item waits behind it
+   * instead of being rejected ("Agent is already processing") and lost. */
+  const deliverQueued = (q: BridgeQueued) => {
     const content = q.images?.length ? [{ type: "text" as const, text: q.text }, ...q.images.map(imageContent)] : q.text;
+    if (inflight) restoreInflight();
+    const { retry: _retry, ...item } = q;
+    inflight = { item, timer: setTimeout(restoreInflight, INFLIGHT_MS) };
+    inflight.timer.unref?.();
     try {
-      pi.sendUserMessage(content, { expandPromptTemplates: true } as never);
+      pi.sendUserMessage(content, { deliverAs: "followUp", expandPromptTemplates: true } as never);
     } catch {
-      // Nothing we can tell the phone here (no ref): it will notice the item vanished from the queue.
+      restoreInflight();
     }
   };
 
-  /** On agent_end: deliver the first "after it ends" item, if any. The rest
-   * wait for the NEXT agent_end (one at a time, as the task spec requires). */
+  /** On agent_settled (UNI-212 — was agent_end, where pi is still
+   * streaming and a bare prompt was rejected): deliver the first "after it
+   * ends" item. The rest wait for the NEXT settle (one at a time, as the
+   * task spec requires). */
   const deliverNextQueued = () => {
     const next = bridgeQueue.shift();
     if (!next) return;
@@ -886,11 +924,16 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
           return;
         }
         if (msg.mode === "now") {
-          // Abort the run, wait for idle, then send as a fresh prompt.
+          // Abort the run, wait for idle, then send as a fresh prompt. A
+          // Stop isn't an ending: the abort's settle must not deliver an
+          // "after it ends" item ahead of this one (UNI-212).
           if (!idle) {
+            skipNextDelivery = true;
             c.abort();
             const deadline = Date.now() + 10_000;
             while (!c.isIdle() && Date.now() < deadline) await new Promise((r) => setTimeout(r, 50));
+            // The abort has settled: the next settle is this prompt's own.
+            skipNextDelivery = false;
           }
           const content = msg.images?.length ? [{ type: "text" as const, text: msg.text }, ...msg.images.map(imageContent)] : msg.text;
           const name = /^\/(\S+)/.exec(msg.text)?.[1];
@@ -971,9 +1014,11 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
         }
         // to === "now": abort, wait for idle, then send as a fresh prompt.
         if (!c.isIdle()) {
+          skipNextDelivery = true;
           c.abort();
           const deadline = Date.now() + 10_000;
           while (!c.isIdle() && Date.now() < deadline) await new Promise((r) => setTimeout(r, 50));
+          skipNextDelivery = false;
         }
         try {
           pi.sendUserMessage(content, { expandPromptTemplates: true } as never);
@@ -1189,7 +1234,7 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
           // Push the fresh preset too: runState() alone doesn't carry
           // `fusion`, so the phone's Lead/Sidekick highlight would stay
           // on the old pair after set_fusion (UNI-176).
-          send({ t: "state", ...runState(), fusion: fusionPreset() });
+          stateWithFusion();
         } catch (error) {
           fail(error instanceof Error ? error.message : String(error));
         }
@@ -1403,11 +1448,30 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
   // fires at a human pace (turn boundaries), never per-token.
   bus.on(pi, UNIPI_EVENTS.FUSION_STATUS, (status) => {
     send({ t: "fusion", status: status as FusionStatusInfo | undefined });
+    // UNI-212: FUSION_STATUS fires on every active-selection change
+    // (picker, set_fusion, a /model switch leaving Fusion): push the fresh
+    // preset too, so the phone's picker never marks a stale Fusion pair as
+    // current after a single model was picked.
+    if (ctx) stateWithFusion();
   });
 
   on("input", (event) => {
     try {
       const mode = event.streamingBehavior === "steer" || event.streamingBehavior === "followUp" ? event.streamingBehavior : "prompt";
+      // UNI-212: pi took a bridge-queued item we handed it — it's delivered
+      // (a late echo of a first attempt also drops its retry copy).
+      if (event.source === "extension") {
+        if (inflight && inflight.item.text === event.text) {
+          clearTimeout(inflight.timer);
+          inflight = undefined;
+        } else {
+          const r = bridgeQueue.findIndex((q) => q.retry && q.text === event.text);
+          if (r >= 0) {
+            bridgeQueue.splice(r, 1);
+            send({ t: "queue", items: queueView() });
+          }
+        }
+      }
       if (mode !== "prompt") {
         tuiQueue.push({
           id: `tui-${process.pid}-${++queueSeq}`,
@@ -1440,7 +1504,7 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
     writeRecord();
     send({ t: "state", running: true });
   }));
-  on("agent_settled", safe(() => {
+  on("agent_settled", safe((_event: unknown, c?: ExtensionContext) => {
     running = false;
     streaming = undefined;
     tools.clear();
@@ -1458,15 +1522,21 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
       tuiQueue.length = 0;
       send({ t: "queue", items: queueView() });
     }
+    writeRecord();
     send({ t: "state", ...runState() });
-  }));
-  // "After it ends" messages (the bridge's own queue): deliver the first one
-  // as a fresh prompt, one at a time — the rest wait for the NEXT agent_end.
-  // A phone already connected has already seen it live (no "needs you" badge
-  // for someone watching); one with no phone open gets the idle-waiting mark.
-  on("agent_end", safe(() => {
+    // "After it ends" messages (the bridge's own queue): deliver the first
+    // one, one at a time — the rest wait for the NEXT settle. UNI-212: here,
+    // not on agent_end: pi emits agent_end while its run is still active, so
+    // a prompt sent there was rejected ("Agent is already processing") and
+    // the item silently lost. During agent_settled pi defers a prompt until
+    // the settle finishes, then starts it as a fresh run.
     if (skipNextDelivery) skipNextDelivery = false;
-    else deliverNextQueued();
+    else if (!c || c.isIdle()) deliverNextQueued();
+  }));
+  // A phone already connected has already seen the end live (no "needs
+  // you" badge for someone watching); one with no phone open gets the
+  // idle-waiting mark.
+  on("agent_end", safe(() => {
     // UNI-162: a settled turn with no phone open is only truly "needs you"
     // idle if nothing is still pending (a background subagent, a bg wake, a
     // fusion handoff) — those will re-invoke pi themselves; marking idle now
@@ -1569,7 +1639,9 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
     send({ t: "tool_end", callId: event.toolCallId, isError: !!event.isError });
   }));
 
-  on("model_select", safe(() => send({ t: "state", ...runState() })));
+  // The preset's `active` changes with the model (Fusion leaves fusion mode
+  // on a /model switch), so it rides along (UNI-212).
+  on("model_select", safe(() => stateWithFusion()));
   on("thinking_level_select", safe(() => send({ t: "state", ...runState() })));
   on("session_compact", safe(() => {
     if (!ctx) return;

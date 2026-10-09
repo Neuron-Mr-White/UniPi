@@ -476,22 +476,83 @@ describe("app bridge over a unix socket", () => {
     q = await c.next((m) => m.t === "queue");
     assert.deepEqual(q.items.map((x: any) => x.id), [id1]);
 
-    // agent_end delivers the one remaining item as a fresh prompt.
+    // agent_end alone delivers nothing (UNI-212: pi is still streaming
+    // there — a prompt would be rejected and the item lost).
     const beforeSent = f.sent.length;
     await f.emit("agent_end", { messages: [] });
+    assert.equal(f.sent.length, beforeSent);
+    // agent_settled (pi idle) delivers the one remaining item.
+    f.setIdle(true);
+    await f.emit("agent_settled", {});
     q = await c.next((m) => m.t === "queue");
     assert.deepEqual(q.items, []);
     assert.equal(f.sent.length, beforeSent + 1);
-    assert.deepEqual(f.sent.at(-1), { content: "first after (edited)", opts: { expandPromptTemplates: true } });
+    assert.deepEqual(f.sent.at(-1), { content: "first after (edited)", opts: { deliverAs: "followUp", expandPromptTemplates: true } });
+    // pi echoes it as an extension input: delivered, nothing comes back.
+    await f.emit("input", { text: "first after (edited)", source: "extension" });
 
-    // A second agent_end with nothing queued sends nothing new.
+    // A second settle with nothing queued sends nothing new.
     const beforeSent2 = f.sent.length;
-    await f.emit("agent_end", { messages: [] });
+    await f.emit("agent_settled", {});
     assert.equal(f.sent.length, beforeSent2);
-    f.setIdle(true);
   });
 
-  it("bridge queue: only the first item delivers per agent_end; the user starting something new clears the rest", async () => {
+  it("UNI-212: a phone Steer that lands as a fresh prompt (run just ended) keeps the queued item; it delivers on the next settle", async () => {
+    f.setIdle(false);
+    c.send({ t: "prompt", text: "after A", mode: "after", ref: "race1" });
+    await c.next((m) => m.t === "ack" && m.ref === "race1");
+    await c.next((m) => m.t === "queue" && m.items.length === 1);
+    // The run ends (agent_end, still streaming) — then the user picks Steer
+    // while pi has gone idle: it's sent as a fresh prompt.
+    await f.emit("agent_end", { messages: [] });
+    f.setIdle(true);
+    f.setPromptStartsRun(true);
+    c.send({ t: "prompt", text: "steer B", mode: "steer", ref: "race2" });
+    await c.next((m) => m.t === "ack" && m.ref === "race2");
+    assert.deepEqual(f.sent.at(-1), { content: "steer B", opts: { deliverAs: undefined, expandPromptTemplates: true } });
+    // The phone prompt is source "extension": it must not clear the bridge queue.
+    await f.emit("input", { text: "steer B", source: "extension" });
+    // The settle of the run that just ended sees pi busy again (steer B): no delivery yet.
+    await f.emit("agent_settled", {});
+    assert.equal(f.sent.at(-1)!.content, "steer B", "the after item waits — pi is busy with steer B");
+    c.send({ t: "resync", ref: "race-sync" });
+    const hello = await c.next((m) => m.t === "hello");
+    assert.deepEqual(hello.queue.map((x: any) => x.text), ["after A"]);
+    // steer B's run settles: now "after A" goes.
+    f.setPromptStartsRun(false);
+    f.setIdle(true);
+    await f.emit("agent_settled", {});
+    await c.next((m) => m.t === "queue" && m.items.length === 0);
+    assert.deepEqual(f.sent.at(-1), { content: "after A", opts: { deliverAs: "followUp", expandPromptTemplates: true } });
+    await f.emit("input", { text: "after A", source: "extension" });
+  });
+
+  it("UNI-212: an item pi never takes (send throws) goes back to the front of the queue instead of vanishing", async () => {
+    f.setIdle(false);
+    c.send({ t: "prompt", text: "fragile", mode: "after", ref: "fr1" });
+    await c.next((m) => m.t === "ack" && m.ref === "fr1");
+    await c.next((m) => m.t === "queue" && m.items.length === 1);
+    const original = f.pi.sendUserMessage;
+    f.pi.sendUserMessage = () => {
+      throw new Error("Agent is already processing");
+    };
+    try {
+      f.setIdle(true);
+      await f.emit("agent_settled", {});
+      await c.next((m) => m.t === "queue" && m.items.length === 0);
+      const back = await c.next((m) => m.t === "queue" && m.items.length === 1);
+      assert.equal(back.items[0].text, "fragile");
+    } finally {
+      f.pi.sendUserMessage = original;
+    }
+    // Next settle retries it; a late echo of it removes nothing else.
+    await f.emit("agent_settled", {});
+    await c.next((m) => m.t === "queue" && m.items.length === 0);
+    assert.equal(f.sent.at(-1)!.content, "fragile");
+    await f.emit("input", { text: "fragile", source: "extension" });
+  });
+
+  it("bridge queue: only the first item delivers per settle; the user starting something new clears the rest", async () => {
     f.setIdle(false);
     c.send({ t: "prompt", text: "one", mode: "after", ref: "nq1" });
     await c.next((m) => m.t === "ack" && m.ref === "nq1");
@@ -501,10 +562,12 @@ describe("app bridge over a unix socket", () => {
     await c.next((m) => m.t === "queue");
 
     const beforeSent = f.sent.length;
-    await f.emit("agent_end", { messages: [] });
+    f.setIdle(true);
+    await f.emit("agent_settled", {});
     const q1 = await c.next((m) => m.t === "queue");
-    assert.equal(q1.items.length, 1, "only one item left: the second waits for the next agent_end");
+    assert.equal(q1.items.length, 1, "only one item left: the second waits for the next settle");
     assert.equal(f.sent.length, beforeSent + 1);
+    await f.emit("input", { text: "one", source: "extension" });
 
     // The user starts something new (TUI input) before the next agent_end: the rest is dropped.
     await f.emit("input", { text: "user typed something else", source: "interactive" });
@@ -838,6 +901,14 @@ describe("app bridge over a unix socket", () => {
       await new Promise((r) => setTimeout(r, 10));
     }
     assert.equal(rec.waiting, null);
+  });
+
+  it("UNI-212: the discovery record carries `running` (agent_start → true, agent_settled → false) for the host's chat list", async () => {
+    await f.emit("agent_start");
+    assert.equal(JSON.parse(readFileSync(join(dir, `${process.pid}.json`), "utf8")).running, true);
+    f.setIdle(true);
+    await f.emit("agent_settled", {});
+    assert.equal(JSON.parse(readFileSync(join(dir, `${process.pid}.json`), "utf8")).running, false);
   });
 
   it('"needs you": idle right after an agent_end with no phone connected also marks `waiting`, cleared once a phone (re)connects', async () => {
