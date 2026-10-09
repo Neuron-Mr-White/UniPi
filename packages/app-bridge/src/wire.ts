@@ -232,6 +232,8 @@ export type OutMsg =
   | { t: "history"; before: string; entries: unknown[]; more: boolean; ref?: string }
   /** `@` file suggestions for `query` (pi's own finder: fd, .gitignore aware). */
   | { t: "files"; query: string; items: FileItem[]; ref?: string }
+  /** Reply to `paths_stat{paths}` (UNI-204): one item per requested path, same order. */
+  | { t: "paths_stat"; items: Array<{ path: string; resolved: string; kind: "file" | "dir" | "missing" }>; ref?: string }
   /** Sessions matching `sessions{scope, query?}`, newest first, capped. */
   | { t: "sessions"; items: SessionsItem[]; more: boolean; ref?: string }
   /** Every branch of the session tree, previews only. */
@@ -310,6 +312,11 @@ export type InMsg =
    *  lets the phone read arbitrary host files). Replies `ack` (no data needed:
    *  the phone already knows the path) or `error`. */
   | { t: "file_share"; path: string; ref?: string }
+  /** UNI-204: which of these chat-text paths exist on this PC? Each resolves
+   *  against the session cwd (`~` against $HOME); only paths inside the cwd
+   *  or $HOME are checked (others answer `missing`); a relative path not at
+   *  the cwd is matched as a unique suffix of the cwd tree. ≤ 200 paths. */
+  | { t: "paths_stat"; paths: string[]; ref?: string }
   /** Set the session's display name. */
   | { t: "session_rename"; name: string; ref?: string }
   /** Ask a side question (btw): streams `btw_delta`/`btw_end` to this phone only. */
@@ -363,6 +370,7 @@ const IN_TYPES = new Set([
   "session_rename",
   "media",
   "file_share",
+  "paths_stat",
   "btw",
   "btw_list",
   "queue_edit",
@@ -449,6 +457,11 @@ export function parseIn(line: string): InMsg | { bad: string; ref?: string } | u
     case "file_share":
       if (typeof m.path !== "string" || !m.path) return { bad: "file_share.path must be a string", ref };
       return { t: "file_share", path: m.path.slice(0, 4096), ref };
+    case "paths_stat": {
+      if (!Array.isArray(m.paths)) return { bad: "paths_stat.paths must be an array", ref };
+      const paths = m.paths.filter((p): p is string => typeof p === "string" && p.length > 0).slice(0, 200).map((p) => p.slice(0, 4096));
+      return { t: "paths_stat", paths, ref };
+    }
     case "btw":
       if (typeof m.question !== "string" || !m.question.trim()) return { bad: "btw.question must be a non-empty string", ref };
       return { t: "btw", question: m.question.slice(0, 8000), ref };

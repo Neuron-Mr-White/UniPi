@@ -37,6 +37,7 @@ import {
 } from "./wire.js";
 import { setRemoteDialogs } from "./remote.js";
 import { fileSuggestions } from "./files.js";
+import { statPaths } from "./paths.js";
 import { registerPath, resolveMedia } from "./media.js";
 import { listWorkItems, stopWorkItem, backgroundWorkItem, workLogPage } from "./work.js";
 import { bus, pendingWorkLabel, UNIPI_EVENTS } from "@pi-unipi/core";
@@ -1118,6 +1119,10 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
       case "files": {
         const items = await fileSuggestions(c.cwd, msg.query);
         write(sock, { t: "files", query: msg.query, items, ref: msg.ref });
+        return;
+      }
+      case "paths_stat": {
+        write(sock, { t: "paths_stat", items: await statPaths(msg.paths, c.cwd), ref: msg.ref });
         return;
       }
       case "sessions": {
