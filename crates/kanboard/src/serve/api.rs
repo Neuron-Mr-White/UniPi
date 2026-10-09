@@ -111,6 +111,16 @@ pub fn project_by_slug(state: &AppState, slug: &str) -> Result<Project, Error> {
 
 // ─── health & projects ──────────────────────────────────────────────────────
 
+/// Which web UI this binary embeds (`app` = the UniPi web build, `legacy` =
+/// the deprecated kanboard UI) — UNI-117.
+fn ui_info() -> Value {
+    let version = super::assets::UI_VERSION;
+    json!({
+        "source": super::assets::UI_SOURCE,
+        "version": if version.is_empty() { Value::Null } else { Value::String(version.to_string()) },
+    })
+}
+
 pub async fn health(State(state): State<Arc<AppState>>) -> ApiResponse {
     // A remote bind must not leak the daemon's pid.
     if super::auth::is_loopback(&state.host) {
@@ -118,9 +128,10 @@ pub async fn health(State(state): State<Arc<AppState>>) -> ApiResponse {
             "ok": true,
             "version": env!("CARGO_PKG_VERSION"),
             "pid": std::process::id(),
+            "ui": ui_info(),
         }))
     } else {
-        ok(json!({ "ok": true, "version": env!("CARGO_PKG_VERSION") }))
+        ok(json!({ "ok": true, "version": env!("CARGO_PKG_VERSION"), "ui": ui_info() }))
     }
 }
 

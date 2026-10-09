@@ -150,6 +150,15 @@ Global: `--project <slug>` or resolved from cwd (git root → slug); `--actor`
 - No "run" button anywhere.
 - Frontend: **Topcoat** (tokio-rs, server-rendered Rust, no client build) if the spike
   passes; otherwise SolidJS built at release time and embedded via `rust-embed`.
+- **Update 2026-10-09 (UNI-117): one frontend.** The embedded UI is now the UniPi app's web
+  build (`unipi-app/apps/mobile npm run build:web`), the same code as the phone and desktop
+  apps, with a Dashboard ("Overview"), drag & drop and keyboard shortcuts on the desktop
+  layout. `crates/kanboard/scripts/build-ui.mjs` fills `ui-dist/` from the first source
+  that works: `UNIPI_KANBOARD_UI_DIST`, then the nested unipi-app checkout, then the
+  published tarball pinned in `ui.lock.json` (sha256), then the deprecated `web/` UI with
+  a build warning. `build.rs` runs it when `ui-dist` is missing; `/api/health` reports
+  `ui.source`. Details: `crates/kanboard/README.md`,
+  `unipi-app/docs/m7/KANBOARD-MIGRATION.md`.
 
 ## pi extension
 Commands (`/unipi:kanboard <sub>` with arg completions):

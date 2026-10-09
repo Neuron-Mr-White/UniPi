@@ -1,0 +1,6 @@
+{
+  "comment": "The published UniPi web build the daemon embeds when no unipi-app checkout is around (crates/kanboard/scripts/build-ui.mjs, source 'pin'). Publish one with unipi-app scripts/publish-web.sh, then paste its version/url/sha256 here. null = nothing published yet (falls back to the legacy UI with a warning).",
+  "version": null,
+  "url": null,
+  "sha256": null
+}

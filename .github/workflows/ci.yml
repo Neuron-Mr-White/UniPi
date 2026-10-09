@@ -49,11 +49,13 @@ jobs:
         with:
           node-version: 24
 
-      # build.rs refuses to compile without web/dist, and the binary embeds it.
+      # The binary embeds ui-dist (UNI-117: the UniPi app's web build). CI has
+      # no unipi-app checkout, so this resolves to the pinned published build,
+      # else the deprecated crates/kanboard/web UI — which tests/ui.mjs drives.
       - name: Build the board UI
         run: |
           npm --prefix crates/kanboard/web ci --no-audit --no-fund
-          npm --prefix crates/kanboard/web run build
+          node crates/kanboard/scripts/build-ui.mjs --source legacy
 
       # rust-toolchain.toml pins 1.98.1 (Topcoat's MSRV).
       - name: Install Rust

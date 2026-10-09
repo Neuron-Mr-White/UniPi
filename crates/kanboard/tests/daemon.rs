@@ -577,7 +577,10 @@ fn a_corrupt_task_file_shows_up_as_a_repair_banner_and_keeps_the_board_alive() {
     // client-side from the same `problems` payload; tests/ui.mjs exercises it).
     let board = http(daemon.port, "GET", &format!("/p/{slug}"), None).expect("board");
     assert_eq!(board.status, 200);
-    assert!(board.body.contains("<!DOCTYPE html>"), "spa shell");
+    assert!(
+        board.body.to_ascii_lowercase().contains("<!doctype html>"),
+        "spa shell"
+    );
     assert!(board.body.contains("/assets/"), "hashed bundle referenced");
 }
 
@@ -619,12 +622,14 @@ fn ui_pages_render_the_board_and_the_drawer() {
     // Any UI path returns the SPA shell, and the hashed bundle is served.
     let picker = http(daemon.port, "GET", "/", None).expect("picker");
     assert_eq!(picker.status, 200);
-    assert!(picker.body.contains("<!DOCTYPE html>"));
+    assert!(picker.body.to_ascii_lowercase().contains("<!doctype html>"));
+    // The embedded UI is the UniPi app's web build (UNI-117) or, as a
+    // fallback, the deprecated kanboard UI — both are a hashed Vite bundle.
     let bundle = picker
         .body
         .split("src=\"")
-        .nth(1)
-        .and_then(|rest| rest.split('"').next())
+        .filter_map(|rest| rest.split('"').next())
+        .find(|src| src.starts_with("/assets/") && src.ends_with(".js"))
         .expect("the shell references its JS bundle");
     let asset = http(daemon.port, "GET", bundle, None).expect("bundle");
     assert_eq!(asset.status, 200, "bundle {bundle} is embedded");
@@ -634,7 +639,7 @@ fn ui_pages_render_the_board_and_the_drawer() {
     let board = http(daemon.port, "GET", &format!("/p/{slug}"), None).expect("board");
     assert_eq!(board.status, 200);
     assert!(
-        board.body.contains("<!DOCTYPE html>"),
+        board.body.to_ascii_lowercase().contains("<!doctype html>"),
         "deep link serves the shell"
     );
 
@@ -658,15 +663,38 @@ fn ui_pages_render_the_board_and_the_drawer() {
         .expect("the shell references its stylesheet");
     let css = http(daemon.port, "GET", css_href, None).expect("css");
     assert_eq!(css.status, 200, "stylesheet {css_href} is embedded");
-    // The theme is applied by the app (data-theme + a matchMedia default in the
-    // bundle) so both the manual toggle and prefers-color-scheme work.
-    assert!(
-        css.body.contains("data-theme"),
-        "the stylesheet themes both modes"
+    if env!("KANBOARD_UI_SOURCE") == "legacy" {
+        // The old UI themes itself (data-theme + a matchMedia default).
+        assert!(
+            css.body.contains("data-theme"),
+            "the stylesheet themes both modes"
+        );
+        assert!(
+            bundle_body.contains("prefers-color-scheme"),
+            "prefers-color-scheme drives the default"
+        );
+    } else {
+        // The app web build: the board talks to this daemon's own API.
+        assert!(bundle_body.contains("/api/"), "the app bundle calls the daemon API");
+    }
+
+    // A missing hashed asset is a real 404 (never the HTML shell).
+    let missing = http(daemon.port, "GET", "/assets/nope-123.js", None).expect("missing asset");
+    assert_eq!(missing.status, 404);
+    // Hashed assets are cacheable forever; the shell always revalidates.
+    assert_eq!(
+        common::response_header(&asset, "cache-control").as_deref(),
+        Some("public, max-age=31536000, immutable")
     );
-    assert!(
-        bundle_body.contains("prefers-color-scheme"),
-        "prefers-color-scheme drives the default"
+    assert_eq!(
+        common::response_header(&picker, "cache-control").as_deref(),
+        Some("no-cache")
+    );
+    // /api/health reports which UI is embedded.
+    let health = http(daemon.port, "GET", "/api/health", None).expect("health");
+    assert_eq!(
+        health.json()["ui"]["source"].as_str(),
+        Some(env!("KANBOARD_UI_SOURCE"))
     );
 }
 

@@ -28,7 +28,7 @@ sha2 = "0.10"
 fs2 = "0.4"
 axum = { version = "0.8", features = ["json"] }
 tower-http = { version = "0.6", features = ["trace"] }
-rust-embed = { version = "8", features = ["mime-guess"] }
+rust-embed = { version = "8", features = ["mime-guess", "include-exclude"] }
 mime_guess = "2"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "signal", "time", "sync", "process", "io-util"] }
 notify = "8"

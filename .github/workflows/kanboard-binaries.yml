@@ -23,6 +23,9 @@ on:
 permissions:
   contents: write
 
+env:
+  UNIPI_APP_TOKEN: ${{ secrets.UNIPI_APP_TOKEN }}
+
 jobs:
   build:
     name: ${{ matrix.name }}
@@ -69,13 +72,24 @@ jobs:
         with:
           node-version: 24
 
-      # The UI is embedded in the binary, so it must exist before cargo runs
-      # (build.rs fails with instructions otherwise).
-      - name: Build the board UI
+      # The daemon embeds the UniPi app's web build (UNI-117). unipi-app is a
+      # separate private repo: check it out when UNIPI_APP_TOKEN is set (a
+      # read-only deploy token), otherwise build-ui.mjs downloads the build
+      # pinned in crates/kanboard/ui.lock.json, else falls back to the old
+      # crates/kanboard/web UI with a warning. See crates/kanboard/README.md.
+      - name: Check out unipi-app (when a token is configured)
+        if: ${{ env.UNIPI_APP_TOKEN != '' }}
+        env:
+          UNIPI_APP_TOKEN: ${{ secrets.UNIPI_APP_TOKEN }}
+        uses: actions/checkout@v4
+        with:
+          repository: Neuron-Mr-White/unipi-app
+          token: ${{ secrets.UNIPI_APP_TOKEN }}
+          path: unipi-app
+
+      - name: Build the board UI (app web build → pinned → legacy)
         shell: bash
-        run: |
-          npm --prefix crates/kanboard/web ci --no-audit --no-fund
-          npm --prefix crates/kanboard/web run build
+        run: node crates/kanboard/scripts/build-ui.mjs && cat crates/kanboard/ui-dist/.source.json
 
       # rust-toolchain.toml pins 1.98.1 (Topcoat's MSRV for the daemon).
       - name: Install Rust (1.98.1, as rust-toolchain.toml pins)
