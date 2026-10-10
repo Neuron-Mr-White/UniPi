@@ -6,6 +6,9 @@ import {
   pendingWorkLabel,
   hasPendingWork,
   PENDING_WORK_KEY,
+  pendingWorkingLine,
+  subscribePendingWork,
+  WORKING_TITLE,
 } from "../pending-work.js";
 import { registerWaitSource, resetArbiterForTests } from "../arbiter.js";
 import { resetWorkChangesForTests } from "../../work/index.js";
@@ -128,5 +131,53 @@ describe("installPendingWorkMonitor", () => {
 
   test("claims under the single PENDING_WORK_KEY label contract", () => {
     assert.equal(PENDING_WORK_KEY, "pending-work");
+  });
+});
+
+describe("UNI-221: pendingWorkingLine / subscribePendingWork", () => {
+  test("one plain 'Working…' line with the reasons as detail", () => {
+    assert.equal(pendingWorkingLine(null), null);
+    assert.equal(pendingWorkingLine("bg: npm test"), "Working… · bg: npm test");
+    assert.equal(pendingWorkingLine(""), WORKING_TITLE);
+    registerWaitSource("subagents", () => "2 subagents working");
+    assert.equal(pendingWorkingLine(), "Working… · 2 subagents working");
+  });
+
+  test("fires on start and end of pending work only (de-duped)", async () => {
+    let reason: string | null = null;
+    registerWaitSource("background-tasks", () => reason);
+    const seen: Array<string | null> = [];
+    const unsub = subscribePendingWork((l) => seen.push(l), { pollMs: 5 });
+    try {
+      await new Promise((r) => setTimeout(r, 20));
+      assert.deepEqual(seen, [], "nothing pending, nothing changed");
+      reason = "bg: sleep 30";
+      await new Promise((r) => setTimeout(r, 30));
+      assert.deepEqual(seen, ["bg: sleep 30"], "one notification for the start");
+      reason = null;
+      await new Promise((r) => setTimeout(r, 30));
+      assert.deepEqual(seen, ["bg: sleep 30", null], "one for the end");
+    } finally {
+      unsub();
+    }
+  });
+
+  test("a throwing listener never breaks the subscription", async () => {
+    let reason: string | null = null;
+    registerWaitSource("subagents", () => reason);
+    let calls = 0;
+    const unsub = subscribePendingWork(() => {
+      calls += 1;
+      throw new Error("boom");
+    }, { pollMs: 5 });
+    try {
+      reason = "subagent working";
+      await new Promise((r) => setTimeout(r, 25));
+      reason = null;
+      await new Promise((r) => setTimeout(r, 25));
+      assert.equal(calls, 2);
+    } finally {
+      unsub();
+    }
   });
 });

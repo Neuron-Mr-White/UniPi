@@ -20,7 +20,7 @@ function record(overrides: Partial<SubagentRecord> = {}): SubagentRecord {
 }
 
 test("background running subagent → wait reason", () => {
-  assert.equal(backgroundRunningReason([record()]), "background subagent running");
+  assert.equal(backgroundRunningReason([record()]), "subagent working");
 });
 
 test("no background running subagent → null", () => {
@@ -43,5 +43,10 @@ test("mixed records: one background running is enough", () => {
     record({ id: "b", background: false, status: "running" }),
     record({ id: "c", status: "running" }),
   ];
-  assert.equal(backgroundRunningReason(all), "background subagent running");
+  assert.equal(backgroundRunningReason(all), "subagent working");
+});
+
+test("UNI-221: several background subagents → counted", () => {
+  const all = [record({ id: "a" }), record({ id: "b" }), record({ id: "c", status: "completed" })];
+  assert.equal(backgroundRunningReason(all), "2 subagents working");
 });

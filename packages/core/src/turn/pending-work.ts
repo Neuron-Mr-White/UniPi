@@ -55,6 +55,58 @@ export function pendingWorkLabel(reasons: ReadonlyArray<{ source: string; reason
 	return reasons.map((r) => r.reason).join(" · ");
 }
 
+/**
+ * UNI-221: the one plain "still working" wording every surface shares (TUI
+ * working line, app bridge `state.waiting`, chat list): `Working…` plus the
+ * pending reasons as detail — e.g. "Working… · bg: npm test · 2 subagents
+ * working". Null when nothing is pending.
+ */
+export const WORKING_TITLE = "Working…";
+
+export function pendingWorkingLine(label: string | null = pendingWorkLabel()): string | null {
+	if (label === null) return null;
+	return label ? `${WORKING_TITLE} · ${label}` : WORKING_TITLE;
+}
+
+/**
+ * UNI-221: subscribe to "the pending-work label changed" (null ↔ label, or
+ * a different label). Rides the shared work-list change signal plus its own
+ * 1 s fallback poll (fusion handoffs only show up via the poll), de-duped so
+ * the listener fires only on an actual change. Independent of the herdr
+ * monitor, so any consumer in the process (the app bridge) can use it.
+ * Returns an unsubscribe function.
+ */
+export function subscribePendingWork(listener: (label: string | null) => void, opts: { pollMs?: number } = {}): () => void {
+	let last: string | null;
+	try {
+		last = pendingWorkLabel();
+	} catch {
+		last = null;
+	}
+	const check = () => {
+		let label: string | null;
+		try {
+			label = pendingWorkLabel();
+		} catch {
+			return;
+		}
+		if (label === last) return;
+		last = label;
+		try {
+			listener(label);
+		} catch {
+			// A broken listener must never break the poll.
+		}
+	};
+	const unsubWork = subscribeWorkChanges(check);
+	const timer = setInterval(check, opts.pollMs ?? 1000);
+	timer.unref?.();
+	return () => {
+		unsubWork();
+		clearInterval(timer);
+	};
+}
+
 /** True while any wait source currently has a reason. */
 export function hasPendingWork(): boolean {
 	return currentWaitReasons().length > 0;

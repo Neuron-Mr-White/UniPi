@@ -40,7 +40,7 @@ import { fileSuggestions } from "./files.js";
 import { statPaths } from "./paths.js";
 import { registerPath, resolveMedia } from "./media.js";
 import { listWorkItems, stopWorkItem, backgroundWorkItem, workLogPage } from "./work.js";
-import { bus, pendingWorkLabel, UNIPI_EVENTS } from "@pi-unipi/core";
+import { bus, pendingWorkLabel, subscribePendingWork, UNIPI_EVENTS } from "@pi-unipi/core";
 import type { BtwListPage } from "./wire.js";
 
 /** `media_chunk.data` (base64) stays well under the 900 KiB bridge line
@@ -112,6 +112,10 @@ export const BRIDGE_VERSION = "1.0.0";
 /** The hidden extension command the bridge uses to get a command-capable
  * context (newSession/fork/navigateTree/switchSession only exist there). */
 export const SESSION_COMMAND = "unipi-app-session";
+
+/** UNI-221: after pending work clears while idle, how long the bridge waits
+ * for the wake turn before marking the session "needs you" (finished). */
+export const PENDING_CLEAR_GRACE_MS = Number(process.env.UNIPI_BRIDGE_PENDING_GRACE_MS) || 3000;
 
 /** Commands the app maps to bridge calls (pi's built-ins can't be sent as text). */
 const BUILTIN_COMMANDS: CommandInfo[] = [
@@ -619,6 +623,58 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
     return { ...rest, entries, truncated };
   };
 
+  const currentPendingWork = (): string | null => {
+    try {
+      return pendingWorkLabel();
+    } catch {
+      return null;
+    }
+  };
+  /** UNI-221: grace between "pending work cleared while idle" and treating
+   * the session as really finished (the needs-you mark) — the cleared work
+   * normally wakes pi in a fresh turn whose own agent_end decides. */
+  let pendingClearTimer: NodeJS.Timeout | undefined;
+  let unsubPending: (() => void) | undefined;
+  const stopPendingWatch = () => {
+    unsubPending?.();
+    unsubPending = undefined;
+    if (pendingClearTimer) clearTimeout(pendingClearTimer);
+    pendingClearTimer = undefined;
+    awaitingFinalSettle = false;
+  };
+  /** Set by an agent_end that skipped the needs-you mark because work was
+   * pending; the final clear (with no wake turn) marks it instead. */
+  let awaitingFinalSettle = false;
+  const checkFinalSettle = () => {
+    if (!awaitingFinalSettle || pendingClearTimer || running) return;
+    if (currentPendingWork() !== null) return;
+    pendingClearTimer = setTimeout(() => {
+      pendingClearTimer = undefined;
+      // Still idle, nothing pending again, no wake turn started: this was
+      // the final settle — mark "needs you" for a phone that isn't watching.
+      if (!awaitingFinalSettle || running || currentPendingWork() !== null) return;
+      try {
+        if (ctx && !ctx.isIdle()) return;
+      } catch {
+        // ignore
+      }
+      awaitingFinalSettle = false;
+      if (clients.size > 0) return; // a phone is watching: it saw the end live
+      idleWaitingSince = Date.now();
+      writeRecord();
+    }, PENDING_CLEAR_GRACE_MS);
+    pendingClearTimer.unref?.();
+  };
+  const onPendingWorkChange = (label: string | null) => {
+    writeRecord();
+    if (!running) send({ t: "state", ...runState() });
+    if (label !== null && pendingClearTimer) {
+      clearTimeout(pendingClearTimer);
+      pendingClearTimer = undefined;
+    }
+    checkFinalSettle();
+  };
+
   const writeRecord = () => {
     if (!ctx || !socketPath) return;
     const dir = bridgeDir();
@@ -639,6 +695,10 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
       // UNI-212: pi's own run state for the host's chat_list — herdr's
       // pane agent_status lags/misses runs, the list showed busy pis "Idle".
       running,
+      // UNI-221: wake-capable work still pending (bg task with a wake, a
+      // background subagent, a fusion handoff) — the host passes it into
+      // chat_list so lists show "Working…" instead of idle/finished.
+      pendingWork: currentPendingWork(),
     };
     try {
       const file = join(dir, `${process.pid}.json`);
@@ -1421,7 +1481,14 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
     // bridge, so a 1 s poll is cheaper than wiring every producer's onChange.
     // Each push is itself de-duped (schedulePush/pushWork skip an unchanged
     // snapshot), so an idle session with no watchers costs one JSON diff/s.
+    // UNI-221: push a `state` (and rewrite the record) the moment pending
+    // work starts/ends while pi is idle, so phones flip "Working…" live.
+    unsubPending?.();
+    unsubPending = subscribePendingWork(onPendingWorkChange);
     pushTicker = setInterval(() => {
+      // A pending start→end shorter than one poll is never seen as a
+      // change; the ticker still finds the final clear.
+      checkFinalSettle();
       if (clients.size > 0) pushWork();
       if (statsWatchers.size > 0) pushStats();
       if (infoWatchers.size > 0) pushInfo();
@@ -1436,6 +1503,7 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
     infoWatchers.clear();
     if (pushTicker) clearInterval(pushTicker);
     pushTicker = undefined;
+    stopPendingWatch();
     server?.close();
     server = undefined;
     const dir = bridgeDir();
@@ -1498,6 +1566,7 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
       infoWatchers.clear();
       if (pushTicker) clearInterval(pushTicker);
       pushTicker = undefined;
+      stopPendingWatch();
       server?.close();
       server = undefined;
     } catch {
@@ -1568,6 +1637,10 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
     skipNextDelivery = false;
     running = true;
     idleWaitingSince = undefined;
+    // The wake turn (or any new turn) owns the finish now.
+    awaitingFinalSettle = false;
+    if (pendingClearTimer) clearTimeout(pendingClearTimer);
+    pendingClearTimer = undefined;
     writeRecord();
     send({ t: "state", running: true });
   }));
@@ -1618,6 +1691,9 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
     if (clients.size === 0 && !pending) {
       idleWaitingSince = Date.now();
       writeRecord();
+    } else if (pending) {
+      // UNI-221: not finished yet — the final clear decides (checkFinalSettle).
+      awaitingFinalSettle = true;
     }
   }));
 

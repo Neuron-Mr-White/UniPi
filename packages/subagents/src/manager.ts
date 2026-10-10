@@ -67,9 +67,11 @@ export function getSharedSubagents(): readonly SubagentRecord[] {
 
 /** Arbiter wait-source reason (lead only): a background run still in flight, or null. */
 export function backgroundRunningReason(all: readonly SubagentRecord[]): string | null {
-  return all.some((record) => record.background && record.status === "running")
-    ? "background subagent running"
-    : null;
+  // UNI-221: short, plain wording — the TUI/app show it as
+  // "Working… · 2 subagents working".
+  const n = all.filter((record) => record.background && record.status === "running").length;
+  if (n === 0) return null;
+  return n === 1 ? "subagent working" : `${String(n)} subagents working`;
 }
 
 export function subscribeSubagents(listener: () => void): () => void {

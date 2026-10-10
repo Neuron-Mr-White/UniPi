@@ -15,7 +15,7 @@
 
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { getSharedTaskRegistry } from "@pi-unipi/background-tasks";
-import { pendingWorkLabel } from "@pi-unipi/core";
+import { pendingWorkLabel, WORKING_TITLE } from "@pi-unipi/core";
 
 const GREEN_DOT = "\x1b[38;5;82m●\x1b[0m"; // running — active work
 const YELLOW_DOT = "\x1b[38;5;220m●\x1b[0m"; // stopped (killed) — needs attention
@@ -78,19 +78,40 @@ export function renderProcessLine(width: number): string[] {
   return [" ".repeat(leftPad) + line];
 }
 
+/** pi's own working spinner frames (pi-tui Loader default). */
+export const WORKING_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+
+export interface WorkingLineStyle {
+  /** Colours the spinner frame (accent). */
+  spinner?: (text: string) => string;
+  /** Colours the detail text (muted). */
+  muted?: (text: string) => string;
+  /** Spinner frame index (animated by the caller). */
+  frame?: number;
+  /** Elapsed ms since the pending work was first seen idle. */
+  elapsedMs?: number;
+}
+
+function formatElapsed(ms: number): string {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  if (s < 60) return `${String(s)}s`;
+  const m = Math.floor(s / 60);
+  return `${String(m)}m ${String(s % 60)}s`;
+}
+
 /**
- * UNI-162: while pi is idle but a wait source still has a reason (a
- * background subagent running, a bg task that will wake the agent, a
- * non-blocking fusion handoff in flight), the footer's own idea of "done"
- * must say so instead of reading as finished — same contract as herdr's
- * pending-work claim, read straight off the arbiter's wait sources via
- * core's `pendingWorkLabel()` (no extra wiring: whichever package already
- * registered the wait source is the source of truth).
+ * UNI-162 / UNI-221: while pi is idle but a wait source still has a reason
+ * (a background subagent running, a bg task that will wake the agent, a
+ * non-blocking fusion handoff in flight) the pane must not read as finished.
+ * Renders a working line shaped like pi's own ("⠋ Working… · bg: npm test ·
+ * 12s") read straight off the arbiter's wait sources via core's
+ * `pendingWorkLabel()` (whichever package registered the wait source is the
+ * source of truth).
  *
- * Returns `undefined` when nothing is pending (callers show their normal
- * idle state), centered to `width` like `renderProcessLine`.
+ * Returns `undefined` when pi is busy (pi shows its own working line) or
+ * nothing is pending (callers show their normal idle state).
  */
-export function renderWaitingLine(width: number, isIdle: () => boolean): string | undefined {
+export function renderWaitingLine(width: number, isIdle: () => boolean, style: WorkingLineStyle = {}): string | undefined {
   if (width <= 1) return undefined;
   let idle: boolean;
   try {
@@ -101,6 +122,10 @@ export function renderWaitingLine(width: number, isIdle: () => boolean): string 
   if (!idle) return undefined;
   const label = pendingWorkLabel();
   if (label === null) return undefined;
-  const line = `waiting on ${label}`;
+  const spinner = style.spinner ?? ((t: string) => t);
+  const muted = style.muted ?? ((t: string) => t);
+  const frame = WORKING_FRAMES[Math.abs(style.frame ?? 0) % WORKING_FRAMES.length] ?? WORKING_FRAMES[0];
+  const elapsed = style.elapsedMs !== undefined ? ` · ${formatElapsed(style.elapsedMs)}` : "";
+  const line = ` ${spinner(frame)} ${spinner(WORKING_TITLE)}${muted(` · ${label}${elapsed}`)}`;
   return truncateToWidth(line, Math.max(1, width - 1));
 }

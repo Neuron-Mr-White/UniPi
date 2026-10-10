@@ -130,7 +130,7 @@ describe("process-line", () => {
       registerWaitSource("background-tasks", () => "2 bg tasks will resume agent");
       registerWaitSource("subagents", () => "subagent running");
       const line = renderWaitingLine(80, () => true);
-      assert.equal(line, "waiting on 2 bg tasks will resume agent · subagent running");
+      assert.equal(line, " ⠋ Working… · 2 bg tasks will resume agent · subagent running");
     });
 
     it("a throwing isIdle counts as idle (same contract as the bg wake line)", () => {
@@ -138,7 +138,7 @@ describe("process-line", () => {
       const line = renderWaitingLine(80, () => {
         throw new Error("boom");
       });
-      assert.equal(line, "waiting on subagent running");
+      assert.equal(line, " ⠋ Working… · subagent running");
     });
 
     it("respects width (never grows past a modest bound, truncation delegated to truncateToWidth)", () => {
@@ -148,6 +148,19 @@ describe("process-line", () => {
       // truncateToWidth may append an ellipsis char beyond the raw column
       // count; the important invariant is "much shorter than the full label".
       assert.ok(line.length < 40);
+    });
+
+    it("UNI-221: animates pi's spinner frames, shows elapsed time and applies colours", () => {
+      registerWaitSource("background-tasks", () => "bg: npm test");
+      const line = renderWaitingLine(80, () => true, {
+        frame: 3,
+        elapsedMs: 72_000,
+        spinner: (t) => `<a>${t}</a>`,
+        muted: (t) => `<m>${t}</m>`,
+      });
+      assert.equal(line, " <a>⠸</a> <a>Working…</a><m> · bg: npm test · 1m 12s</m>");
+      const short = renderWaitingLine(80, () => true, { elapsedMs: 4_200 });
+      assert.equal(short, " ⠋ Working… · bg: npm test · 4s");
     });
 
     it("undefined at width <= 1", () => {

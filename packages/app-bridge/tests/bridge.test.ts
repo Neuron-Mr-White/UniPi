@@ -10,6 +10,7 @@ import { join } from "node:path";
 
 const dir = mkdtempSync(join(tmpdir(), "app-bridge-"));
 process.env.UNIPI_BRIDGE_DIR = dir;
+process.env.UNIPI_BRIDGE_PENDING_GRACE_MS = "150";
 const { createBridge, SESSION_COMMAND } = await import("../src/bridge.js");
 
 type Handler = (event: any, ctx: any) => unknown;
@@ -1050,6 +1051,67 @@ describe("app bridge over a unix socket", () => {
     await f.emit("agent_settled", {});
     const cleared = await c.next((m) => m.t === "state");
     assert.equal(cleared.waiting, undefined);
+  });
+
+  it("UNI-221: pending work starting/ending while idle pushes a live `state` and rewrites the record's pendingWork", async () => {
+    const { registerWaitSource, resetArbiterForTests } = await import("@pi-unipi/core");
+    let reason: string | null = null;
+    const unregister = registerWaitSource("background-tasks", () => reason);
+    try {
+      reason = "bg: sleep 30";
+      const started = await c.next((m) => m.t === "state" && m.waiting === "bg: sleep 30", 3000);
+      assert.equal(started.running, false);
+      assert.equal(JSON.parse(readFileSync(join(dir, `${process.pid}.json`), "utf8")).pendingWork, "bg: sleep 30");
+      reason = null;
+      const ended = await c.next((m) => m.t === "state" && m.waiting === undefined, 3000);
+      assert.equal(ended.running, false);
+      assert.equal(JSON.parse(readFileSync(join(dir, `${process.pid}.json`), "utf8")).pendingWork, null);
+    } finally {
+      unregister();
+      resetArbiterForTests();
+    }
+  });
+
+  it("UNI-221: no phone connected — 'needs you' is set only after pending work clears AND no wake turn started (grace)", async () => {
+    const { registerWaitSource, resetArbiterForTests } = await import("@pi-unipi/core");
+    const rec = () => JSON.parse(readFileSync(join(dir, `${process.pid}.json`), "utf8"));
+    c.sock.destroy();
+    await new Promise((r) => setTimeout(r, 50));
+    let reason: string | null = "subagent working";
+    const unregister = registerWaitSource("subagents", () => reason);
+    try {
+      // Case 1: work clears, the wake turn starts inside the grace → no mark.
+      await f.emit("agent_end", { messages: [] });
+      assert.equal(rec().waiting, null);
+      reason = null;
+      await new Promise((r) => setTimeout(r, 1100)); // poll notices the clear
+      await f.emit("agent_start");
+      await new Promise((r) => setTimeout(r, 300));
+      assert.equal(rec().waiting, null, "the wake turn owns the finish");
+      assert.equal(rec().running, true);
+
+      // Case 2: the wake turn ends with work pending again, then it clears
+      // and nothing wakes pi → the final settle marks "needs you".
+      reason = "subagent working";
+      f.setIdle(true);
+      await f.emit("agent_settled", {});
+      await f.emit("agent_end", { messages: [] });
+      assert.equal(rec().waiting, null);
+      assert.equal(rec().pendingWork, "subagent working");
+      reason = null;
+      let r = rec();
+      for (let i = 0; i < 60 && !r.waiting; i++) {
+        await new Promise((res) => setTimeout(res, 50));
+        r = rec();
+      }
+      assert.equal(r.waiting?.kind, "agent_end");
+      assert.equal(r.pendingWork, null);
+    } finally {
+      unregister();
+      resetArbiterForTests();
+      c = client(join(dir, `${process.pid}.sock`));
+      await c.next((m) => m.t === "hello");
+    }
   });
 
   it("a session switch tells phones to reconnect and frees the socket for the next instance", async () => {

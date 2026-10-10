@@ -90,6 +90,13 @@ let renotifyTimer: ReturnType<typeof setInterval> | undefined;
 let pendingWorkSuppressedDone = false;
 /** Unsubscribe from the shared work-list change signal (torn down on reload). */
 let unsubPendingWorkWatch: (() => void) | undefined;
+/** Grace timer between "pending work cleared" and the "All done" send. */
+let allDoneTimer: ReturnType<typeof setTimeout> | undefined;
+/**
+ * UNI-221: how long after pending work clears the watcher waits for the
+ * wake turn to start before it sends "All done". Exported for tests.
+ */
+export const ALL_DONE_GRACE_MS = 2500;
 
 /**
  * A `ui_prompt_start` within this window of an ask_user/permission alert is
@@ -187,9 +194,7 @@ function unregisterAll(): void {
   disarmRenotify();
   agentRunning = false;
   openPrompts = 0;
-  pendingWorkSuppressedDone = false;
-  unsubPendingWorkWatch?.();
-  unsubPendingWorkWatch = undefined;
+  disarmAllDoneWatch();
   for (const unsub of unsubs) {
     try { unsub(); } catch { /* ignore */ }
   }
@@ -313,6 +318,9 @@ export function registerEventListeners(
   (pi as any).on("agent_start", () => {
     agentRunning = true;
     disarmRenotify();
+    // UNI-221: a turn starting (often the wake from the pending work) owns
+    // the "finished" notification now — never also send "All done".
+    disarmAllDoneWatch();
   });
 
   registerAgentNotification(pi, "agent_end", config, cwd, dispatch);
@@ -603,7 +611,22 @@ function armAllDoneWatch(
   unsubPendingWorkWatch?.();
   unsubPendingWorkWatch = subscribeWorkChanges(() => {
     if (hasPendingWakeTask() || hasPendingWork()) return;
-    // Everything cleared: send ONE "All done" and disarm.
+    if (allDoneTimer) return; // grace already running
+    // UNI-221: the work that just cleared (a bg task with a wake, a
+    // background subagent, a fusion handoff) usually wakes pi in a fresh
+    // turn — that turn's own agent_end/agent_settled is the real "finished".
+    // Wait a short grace; if a turn started (agent_start disarms this
+    // watcher) or work is pending again, send nothing here.
+    allDoneTimer = setTimeout(() => {
+      allDoneTimer = undefined;
+      if (!pendingWorkSuppressedDone || agentRunning) return;
+      if (hasPendingWakeTask() || hasPendingWork()) return;
+      sendAllDone();
+    }, ALL_DONE_GRACE_MS);
+    allDoneTimer.unref?.();
+  });
+  const sendAllDone = () => {
+    // Everything cleared and nothing woke pi: send ONE "All done" and disarm.
     pendingWorkSuppressedDone = false;
     unsubPendingWorkWatch?.();
     unsubPendingWorkWatch = undefined;
@@ -613,7 +636,17 @@ function armAllDoneWatch(
     dispatch(pi, title, message, platforms, "agent_settled", config, cwd, "low").catch(() => {
       // Silently ignore — background agent notification failure is non-blocking.
     });
-  });
+  };
+}
+
+/** UNI-221: disarm the "All done" watcher — a fresh turn started, so its own
+ *  settle decides whether the session is finished (or pending again). */
+function disarmAllDoneWatch(): void {
+  pendingWorkSuppressedDone = false;
+  unsubPendingWorkWatch?.();
+  unsubPendingWorkWatch = undefined;
+  if (allDoneTimer) clearTimeout(allDoneTimer);
+  allDoneTimer = undefined;
 }
 
 /** Register an agent lifecycle notification with session name and recap support. */

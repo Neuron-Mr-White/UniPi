@@ -4,12 +4,13 @@
  * per-event dispatch priority.
  */
 
-import { after, beforeEach, describe, it } from "node:test";
+import { after, beforeEach, describe, it, mock } from "node:test";
 import assert from "node:assert/strict";
 import { UNIPI_EVENTS, bus, isUnipiEventName, resetBusForTests } from "@pi-unipi/core";
 
 import {
   disarmRenotify,
+  ALL_DONE_GRACE_MS,
   hasPendingWakeTask,
   PROMPT_DEDUP_MS,
   registerEventListeners,
@@ -235,7 +236,11 @@ describe("notify — agent lifecycle suppression while a wake is pending", () =>
       assert.equal(h.calls.length, 0, "suppressed while the subagent runs");
 
       subagentDone = true;
+      mock.timers.enable({ apis: ["setTimeout"] });
       fireChange?.();
+      assert.equal(h.calls.length, 0, "UNI-221: waits a grace for the wake turn first");
+      mock.timers.tick(ALL_DONE_GRACE_MS);
+      mock.timers.reset();
       assert.equal(h.calls.length, 1, "exactly one notification once work clears");
       assert.equal(h.calls[0]?.title, "Pi — All Done");
 
@@ -243,6 +248,42 @@ describe("notify — agent lifecycle suppression while a wake is pending", () =>
       fireChange?.();
       assert.equal(h.calls.length, 1, "does not re-fire once disarmed");
     } finally {
+      resetArbiterForTests();
+      delete g[Symbol.for("unipi.subagents.shared-subscribe")];
+    }
+  });
+
+  it("UNI-221: no 'All done' when the cleared work woke pi into a fresh turn (that turn's settle is the real finish)", async () => {
+    let pending = true;
+    const g = globalThis as unknown as Record<symbol, unknown>;
+    let fireChange: (() => void) | undefined;
+    g[Symbol.for("unipi.subagents.shared-subscribe")] = (listener: () => void) => {
+      fireChange = listener;
+      return () => {
+        fireChange = undefined;
+      };
+    };
+    mock.timers.enable({ apis: ["setTimeout"] });
+    try {
+      registerWaitSource("background-tasks", () => (pending ? "bg: sleep 30" : null));
+      const h = harness(fakeConfig(["agent_end"]));
+      await invokeLifecycle(h, "agent_end", {});
+      assert.equal(h.calls.length, 0, "intermediate turn suppressed");
+
+      pending = false;
+      fireChange?.();
+      // The bg task's wake starts a new turn inside the grace.
+      await invokeLifecycle(h, "agent_start", {});
+      mock.timers.tick(ALL_DONE_GRACE_MS * 2);
+      assert.equal(h.calls.length, 0, "no premature 'All done'");
+
+      // The wake turn settles with nothing pending: ONE real finish.
+      await invokeLifecycle(h, "agent_end", {});
+      assert.equal(h.calls.length, 1);
+      assert.equal(h.calls[0]?.eventType, "agent_end");
+      assert.notEqual(h.calls[0]?.title, "Pi — All Done");
+    } finally {
+      mock.timers.reset();
       resetArbiterForTests();
       delete g[Symbol.for("unipi.subagents.shared-subscribe")];
     }

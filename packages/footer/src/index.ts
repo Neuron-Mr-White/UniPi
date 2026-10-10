@@ -18,6 +18,7 @@ import {
   FOOTER_COMMANDS,
   getPackageVersion,
   findPackageRoot,
+  pendingWorkLabel,
 } from "@pi-unipi/core";
 import { getFooterRegistry, type FooterRegistry } from "./registry/index.js";
 import { loadFooterSettings, saveFooterSettings } from "./config.js";
@@ -232,22 +233,62 @@ function setupFooterUI(pi: ExtensionAPI, ctx: ExtensionContext, state: FooterSta
   // glance frame (the frame replaces the editor, so this aboveEditor slot sits
   // right above the footer); the frame's own borders show
   // branch/context/model/thinking.
-  ctx.ui.setWidget("footer-top", (tui, _theme) => {
+  ctx.ui.setWidget("footer-top", (tui, theme) => {
     state.tuiRef = tui;
+    // UNI-221: animation state for the pending-work working line.
+    let waitingSince: number | undefined;
+    let spinTimer: ReturnType<typeof setInterval> | undefined;
+    const stopSpin = () => {
+      if (spinTimer) clearInterval(spinTimer);
+      spinTimer = undefined;
+    };
     return {
-      dispose() {},
+      dispose() {
+        stopSpin();
+      },
       invalidate() {},
       render(width: number): string[] {
         const settings = loadFooterSettings();
-        if (!state.enabled || !settings.processLine || !state.piContext || width <= 0) return [];
-        if (!stripVisibleAtRows(terminalRows(tui))) return [];
-        // UNI-162: a short "waiting on …" line takes priority over the bg
-        // process dots while pi looks idle but work is still pending (a
-        // background subagent, a bg wake, a fusion handoff) — the pane must
-        // not read as finished.
+        if (!state.enabled || !state.piContext || width <= 0) {
+          stopSpin();
+          return [];
+        }
+        // UNI-162 / UNI-221: while pi looks idle but wake-capable work is
+        // still pending (a background subagent, a bg wake, a fusion
+        // handoff) show a working line shaped like pi's own ("⠋ Working… ·
+        // bg: npm test · 12s") — the pane must not read as finished. It is
+        // a status, not part of the bg dots, so it ignores processLine/
+        // strip-hiding settings.
         const ctx = state.piContext as { isIdle?: () => boolean } | undefined;
-        const waiting = ctx?.isIdle ? renderWaitingLine(width, () => ctx.isIdle!()) : undefined;
-        if (waiting !== undefined) return [waiting];
+        const now = Date.now();
+        const frame = Math.floor(now / 80);
+        const fg = (color: string, text: string) => {
+          try {
+            return (theme as unknown as { fg: (c: string, t: string) => string }).fg(color, text);
+          } catch {
+            return text;
+          }
+        };
+        const waiting = ctx?.isIdle
+          ? renderWaitingLine(width, () => ctx.isIdle!(), {
+              frame,
+              elapsedMs: waitingSince !== undefined ? now - waitingSince : 0,
+              spinner: (t) => fg("accent", t),
+              muted: (t) => fg("muted", t),
+            })
+          : undefined;
+        if (waiting !== undefined) {
+          waitingSince ??= now;
+          if (!spinTimer) {
+            spinTimer = setInterval(() => tui.requestRender(), 80);
+            spinTimer.unref?.();
+          }
+          return [waiting];
+        }
+        waitingSince = undefined;
+        stopSpin();
+        if (!settings.processLine) return [];
+        if (!stripVisibleAtRows(terminalRows(tui))) return [];
         return renderProcessLine(width);
       },
     };
@@ -347,6 +388,14 @@ function renderKey(state: FooterState): string {
     state.activeToolCalls,
     bg ? `${bg.running}/${bg.stopped}/${bg.failed}/${bg.done}` : "",
     tpsTracker.getStepCount(),
+    // UNI-221: the pending-work working line appears/disappears with it.
+    (() => {
+      try {
+        return pendingWorkLabel() ?? "";
+      } catch {
+        return "";
+      }
+    })(),
     // Rainbow brand animates with wall time — keep the 1s shimmer when on.
     loadFooterSettings().rainbow !== "off" ? Math.floor(Date.now() / 1000) : "",
   ].join("|");
