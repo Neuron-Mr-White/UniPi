@@ -85,6 +85,7 @@ function detectNamespaceBoost(query: string): string | null {
 function getEnhancedUnipiItems(
   prefix: string,
   descriptionOverrides: Map<string, string> = new Map(),
+  registered: readonly string[] = [],
 ): AutocompleteItem[] {
   // The base provider sets prefix = full textBeforeCursor e.g. "/uni", "/unipi:brain".
   // Two cases:
@@ -98,7 +99,12 @@ function getEnhancedUnipiItems(
     ? stripped.slice("unipi:".length) // e.g. "brain" from "/unipi:brain"
     : stripped;                        // e.g. "uni" from "/uni"
 
-  const entries = Object.entries(COMMAND_REGISTRY);
+  // The curated registry only orders/labels commands. Any unipi:* command pi
+  // actually registered but missing from it (e.g. a newly added command) is
+  // still offered, filed under "other" — otherwise it silently vanished from
+  // the dropdown because the base items are dropped below.
+  const entries: [string, string][] = Object.entries(COMMAND_REGISTRY);
+  for (const cmd of registered) if (!(cmd in COMMAND_REGISTRY)) entries.push([cmd, "other"]);
 
   // Detect namespace query: when the query is exactly a package name/alias
   // (e.g. "workflow", "mem", "utility") short-circuit and return ALL commands
@@ -255,10 +261,12 @@ export function createEnchantedProvider(
       // Separate: keep non-unipi items, collect unipi descriptions
       const nonUnipiItems: AutocompleteItem[] = [];
       const descriptionOverrides = new Map<string, string>();
+      const registeredUnipi: string[] = [];
 
       if (baseSuggestions) {
         for (const item of baseSuggestions.items) {
           if (item.value.startsWith("unipi:")) {
+            registeredUnipi.push(item.value);
             if (item.description) {
               const cleanDescription = stripPiSourceTag(item.description);
               if (cleanDescription) {
@@ -279,6 +287,7 @@ export function createEnchantedProvider(
       const enhancedUnipiItems = getEnhancedUnipiItems(
         effectivePrefix,
         descriptionOverrides,
+        registeredUnipi,
       );
 
       // If no unipi items match, handle skill vs system items

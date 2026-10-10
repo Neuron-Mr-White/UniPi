@@ -22,6 +22,10 @@ function collectConstants(): Map<string, string> {
 
   for (const path of globSync("packages/**/*.ts", { cwd: root })) {
     const text = read(path);
+    // Plain string constants: `export const VISUALIZE_COMMAND = "unipi:…";`
+    for (const m of text.matchAll(/(?:export\s+)?const\s+([A-Z][A-Z0-9_]*)\s*=\s*"([^"]+)"\s*;/g)) {
+      if (!constants.has(m[1])) constants.set(m[1], m[2]);
+    }
     for (const obj of text.matchAll(/(?:export\s+)?const\s+(\w+)\s*=\s*\{([\s\S]*?)\}\s*as\s+const/g)) {
       const [, name, body] = obj;
       for (const item of body.matchAll(/(\w+):\s*"([^"]+)"/g)) {
@@ -61,6 +65,8 @@ function registeredCommands(): { commands: Set<string>; nonUnipi: string[]; unre
   const unresolved: string[] = [];
 
   for (const path of globSync("packages/**/*.ts", { cwd: root }).sort()) {
+    // Test files register throwaway commands; they're not shipped.
+    if (/\.test\.ts$|\/__tests__\/|\/tests\//.test(path)) continue;
     const text = read(path);
     if (!text.includes("registerCommand")) continue;
 

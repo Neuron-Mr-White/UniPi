@@ -42,12 +42,13 @@ export const COMMAND_REGISTRY: Record<string, string> = {
   "unipi:plan":           "workflow",
   "unipi:permission":     "workflow",
 
-  // long-horizon (5 commands)
+  // long-horizon (6 commands)
   "unipi:goal":           "long-horizon",
   "unipi:ralph":          "long-horizon",
   "unipi:swarm":          "long-horizon",
   "unipi:graph":          "long-horizon",
   "unipi:regular":        "long-horizon",
+  "unipi:visualize-progress": "long-horizon",
 
   // memory (7 commands)
   "unipi:memory":              "memory",
@@ -73,6 +74,7 @@ export const COMMAND_REGISTRY: Record<string, string> = {
   "unipi:retry":      "utility",
   "unipi:cleanup":    "utility",
   "unipi:doctor":     "utility",
+  "unipi:dream":      "utility",
   "unipi:answer":     "utility",
   "unipi:summarize":  "utility",
   "unipi:move":       "utility",
@@ -140,6 +142,7 @@ export const COMMAND_DESCRIPTIONS: Record<string, string> = {
   "unipi:swarm":          "Parallel fan-out + synthesis · complex decomposable · higher cost, high coverage",
   "unipi:graph":          "Dependent multi-step work · later steps need earlier results · highest cost",
   "unipi:regular":        "Regular mode — stop the active owner and run prompts without long-horizon routing",
+  "unipi:visualize-progress": "Live view of the goal / ralph / swarm / graph run (Esc closes)",
 
   "unipi:memory":             "Memory palace — status, migrate, recall/write toggles",
   "unipi:memory-process":     "Analyze text and store extracted memories",
@@ -192,6 +195,7 @@ export const COMMAND_DESCRIPTIONS: Record<string, string> = {
 
   "unipi:bg":          "Start a shell command as a tracked background task",
   "unipi:bg-tasks":    "Open the background task manager UI",
+  "unipi:dream":       "Dream status, report and proposal approval",
   "unipi:model":         "Pick a model or Fusion lead+sidekick pair (Devin-style picker)",
   "unipi:fusion-stats":  "Estimated Fusion savings (sidekick tokens priced at lead rates)",
 };
