@@ -487,7 +487,7 @@ export const HINT_LINES: readonly Hint[] = [
     teaches: "/unipi:cleanup",
   },
 
-  // ─── whatsnew (15) ───────────────────────────────────────────────────────────
+  // ─── whatsnew (18) ───────────────────────────────────────────────────────────
   {
     id: "new.unicrab",
     category: "whatsnew",
@@ -597,6 +597,30 @@ export const HINT_LINES: readonly Hint[] = [
     text: "Shrink the window and the footer drops its least important stats first, no cut-off text.",
     when: "startup",
     since: "3.0.0-alpha.27",
+  },
+
+  {
+    id: "new.work-tray",
+    category: "whatsnew",
+    text: "Background tasks and subagents share one work tray now. Press ↓ on an empty input to open it.",
+    when: "startup",
+    since: "3.0.0-alpha.36",
+  },
+  {
+    id: "new.visualize-progress",
+    category: "whatsnew",
+    text: "/unipi:visualize-progress shows a long-horizon run live: steps, bars and the log in one view.",
+    when: "startup",
+    teaches: "/unipi:visualize-progress",
+    since: "3.0.0-alpha.36",
+  },
+  {
+    id: "new.dream",
+    category: "whatsnew",
+    text: "New: Dream reviews past sessions in the background. It ships off: see /unipi:dream.",
+    when: "startup",
+    teaches: "/unipi:dream",
+    since: "3.0.0-alpha.36",
   },
 
   // ─── workflow (8) ───────────────────────────────────────────────────────────

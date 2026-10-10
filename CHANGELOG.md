@@ -6,6 +6,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.0.0-alpha.36] — 2026-10-11
+
+### Added
+- `dream` (new package, **off by default**): Dream reviews your past sessions in the background, turns repeated false paths into memory lessons and proposes skills and checks for you to approve or reject. `/unipi:dream` shows its state (`/unipi:dream run` starts one now), and `/unipi:settings` → Dream turns it on; the work tray gets a Dream tab (runs, live detail, report, approve/reject, stop, run now) that stays hidden while Dream is off and has no history. The UniPi app gets a Dream sheet. (UNI-118)
+- **One work tray** for background tasks and subagents: press ↓ on an empty input (or Shift+↓, `/unipi:bg-tasks`, `/unipi:subagents`) and switch tabs with ←/→. The Background tasks tab now looks like the Subagents tab, and nothing is drawn under the editor while the tray is closed. (UNI-126)
+- `/unipi:visualize-progress`: a live view of a long-horizon run — steps, spinners, progress bars and the log in one fixed layout. The UniPi app can show the same view. (UNI-222)
+- `kanboard`: the kanboard daemon serves the UniPi app's web build, so the board and the app share one frontend. (UNI-117)
+- `app-bridge`: features for UniPi app 0.4.x — pi's own queue can be edited from the phone (Stop puts it back in the composer), file links in chat are checked against the PC (session folder, home, and safe roots such as `/tmp`, `/var/tmp`, `/mnt`, `/media`, `/srv`, `/opt`), Dream and progress views, and the Fusion preset follows model changes. (UNI-202, UNI-204, UNI-211, UNI-220, UNI-176)
+
+### Changed
+- One "Working…" state while background tasks or subagents that can wake the agent are still running: the footer and the app show waiting instead of idle, and notify sends a single "All done" when everything has finished. (UNI-162, UNI-221)
+- Long-horizon modes (`/unipi:<mode>`) stay on until you switch or the run that owns them settles. (UNI-165)
+- Autocomplete offers every registered `/unipi:*` command, including `/unipi:visualize-progress` and `/unipi:dream`; commands missing from the curated list are no longer dropped.
+- Omniroute-specific code is gone; the judge picks models from pi's own model registry. (UNI-249)
+- All spinners share one animation tick instead of one timer per card. (UNI-133)
+
+### Fixed
+- `notify`: one "finished" notification per run, not one per chat change. (UNI-223)
+- `app-bridge`: "after it ends" items are always delivered once pi is really idle — exactly once and in order; an item pi doesn't take is restored, and a phone Stop doesn't send it early. (UNI-212, UNI-223)
+- `app-bridge`: editing a queued message from the phone no longer loses messages. (UNI-202)
+- Side questions (`btw`) keep streaming after the phone reconnects. (UNI-219)
+- Typed `/commands` show as normal messages, and the hidden `/unipi-app-session` command never appears in the terminal, the session or the app. (UNI-251)
+- `app-bridge`: the session tree works on very long sessions (no stack overflow, reply fits one socket line). (UNI-194)
+- `memory`: MemPalace RAM use is bounded per session and over time. (UNI-179)
+- `fusion`: the shell-delegation nudge no longer counts read-only commands it used to misread — kanboard CLI calls, quoted `|`/`;`/`>` in grep/echo patterns, and `$VAR` command heads assigned earlier in the same line. (UNI-108)
+- The root package no longer lists a removed `packages/subagents/prompts` mount.
+
 ## [3.0.0-alpha.35] — 2026-10-08
 
 ### Added

@@ -249,11 +249,11 @@ The recent releases, in short. The [changelog](CHANGELOG.md) has the details.
 
 | Release | What changed for you |
 |---|---|
+| alpha.36 | One work tray for background tasks and subagents (press ↓ on an empty input); nothing spins under the editor any more. `/unipi:visualize-progress` shows a long run live. Dream (off by default, `/unipi:dream`) learns from past sessions. Typed commands show as normal messages, and you get one "finished" notification per run. |
 | alpha.29 | Plan mode plans with you: it asks before it submits, blocks only edits outside the plan, and the review shows a summary beside the steps. Notify can alert on any prompt the agent waits on (Input Needed). |
 | alpha.27 | The footer shows tokens in and out and the session cost under the input. It fits narrow and short windows. Each part of the stats line, the frame badges and the rainbow can be turned off in `/unipi:settings` → Footer. The classic footer is gone. |
 | alpha.25 | The Unicrab splash at startup. A new `/unipi:info`: this session, the context bucket, compaction savings and `s`/`p`/`g` scope tags. Prompts that UniPi sends for you (goal, summarize, answer) show as a UniPi panel, not as your own message. |
 | alpha.24 | The `summarize` skill and `/unipi:summarize [focus]`. Long work ends with a short recap: the answer first, then findings, open items and questions. |
-| alpha.23 | `/unipi:settings` explains each setting and each option in a panel below the list. Web tools with no working provider hide from the agent. |
 
 ## Docs
 
