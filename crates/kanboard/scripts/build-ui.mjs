@@ -41,6 +41,9 @@ const flag = (name) => {
 const forced = flag('--source');
 const ifMissing = args.includes('--if-missing');
 const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+// Node ≥ 18.20 / 20.12 refuses to spawn .cmd files without a shell (EINVAL,
+// CVE-2024-27980). The npm arguments below are fixed literals, so a shell is safe.
+const npmShell = process.platform === 'win32';
 const log = (message) => console.error(`[kanboard ui] ${message}`);
 
 if (ifMissing && existsSync(join(out, 'index.html'))) process.exit(0);
@@ -80,10 +83,10 @@ function fromApp() {
   if (!scripts['build:web']) return `${mobile} has no build:web script (update unipi-app)`;
   if (!existsSync(join(root, 'node_modules')) && !existsSync(join(mobile, 'node_modules'))) {
     log(`npm ci in ${root}`);
-    execFileSync(npm, ['ci', '--no-audit', '--no-fund'], { cwd: root, stdio: ['ignore', 'inherit', 'inherit'] });
+    execFileSync(npm, ['ci', '--no-audit', '--no-fund'], { cwd: root, stdio: ['ignore', 'inherit', 'inherit'], shell: npmShell });
   }
   log(`npm run build:web in ${mobile}`);
-  execFileSync(npm, ['run', 'build:web'], { cwd: mobile, stdio: ['ignore', 'inherit', 'inherit'] });
+  execFileSync(npm, ['run', 'build:web'], { cwd: mobile, stdio: ['ignore', 'inherit', 'inherit'], shell: npmShell });
   const dist = join(mobile, 'dist-web');
   let version = null;
   try {
@@ -127,8 +130,8 @@ function fromLegacy() {
   const web = join(crate, 'web');
   if (!existsSync(join(web, 'package.json'))) return 'crates/kanboard/web is gone';
   if (!existsSync(join(web, 'dist', 'index.html'))) {
-    if (!existsSync(join(web, 'node_modules'))) execFileSync(npm, ['ci', '--no-audit', '--no-fund'], { cwd: web, stdio: ['ignore', 'inherit', 'inherit'] });
-    execFileSync(npm, ['run', 'build'], { cwd: web, stdio: ['ignore', 'inherit', 'inherit'] });
+    if (!existsSync(join(web, 'node_modules'))) execFileSync(npm, ['ci', '--no-audit', '--no-fund'], { cwd: web, stdio: ['ignore', 'inherit', 'inherit'], shell: npmShell });
+    execFileSync(npm, ['run', 'build'], { cwd: web, stdio: ['ignore', 'inherit', 'inherit'], shell: npmShell });
   }
   install(join(web, 'dist'), { source: 'legacy', version: null, detail: 'crates/kanboard/web (deprecated kanboard UI)' });
   log('WARNING: embedding the deprecated kanboard web UI — build unipi-app (apps/mobile npm run build:web) or pin a published web build in ui.lock.json');
