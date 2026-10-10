@@ -126,6 +126,10 @@ describe("snapshot", () => {
     assert.deepEqual(entries.map((e: any) => e.id), ["c", "b"]);
     assert.equal(truncated, true);
     assert.equal(wantedEntry({ type: "custom", customType: "unipi-command-echo" }), true);
+    // UNI-251: the hidden session command's echo (old sessions persisted it) never reaches the phone.
+    assert.equal(wantedEntry({ type: "custom", customType: "unipi-command-echo", data: { text: "/unipi-app-session" } }), false);
+    assert.equal(wantedEntry({ type: "custom", customType: "unipi-command-echo", data: { text: "/unipi:kanboard-do x" } }), true);
+    assert.deepEqual(historyPage([{ type: "message", id: "a" }, { type: "custom", id: "h", customType: "unipi-command-echo", data: { text: "/unipi-app-session" } }, { type: "message", id: "b" }, { type: "message", id: "c" }], "c").entries.map((e: any) => e.id), ["a", "b"]);
   });
   it("trims from the oldest end to fit the budget", () => {
     const branch = Array.from({ length: 10 }, (_, i) => ({ type: "message", id: String(i), message: { role: "user", content: "x".repeat(1000) } }));

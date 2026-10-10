@@ -109,3 +109,21 @@ test("buildSessionContext skips custom entries between toolCall and toolResult",
     rmSync(cwd, { recursive: true, force: true });
   }
 });
+
+test("UNI-251: silenced (internal) commands run without an echo; others still echo", async () => {
+  const { silenceCommandEcho, isSilentEcho } = await import("./command-echo.js");
+  const pi = fakePi();
+  const api = withCommandEcho(pi as never);
+  let ran = 0;
+  silenceCommandEcho("unipi-app-session-test");
+  api.registerCommand("unipi-app-session-test", { handler: async () => { ran++; } });
+  api.registerCommand("unipi:kanboard-do", { handler: async () => { ran++; } });
+  await (pi.commands.get("unipi-app-session-test") as any).handler("", {});
+  await (pi.commands.get("unipi:kanboard-do") as any).handler("fix it", {});
+  assert.equal(ran, 2);
+  assert.deepEqual(pi.appended.map((a) => (a.data as any).text), ["/unipi:kanboard-do fix it"]);
+  assert.equal(isSilentEcho("/unipi-app-session-test"), true);
+  assert.equal(isSilentEcho("/unipi-app-session-test x"), true);
+  assert.equal(isSilentEcho("/unipi:kanboard-do fix it"), false);
+  assert.equal(isSilentEcho(undefined), false);
+});

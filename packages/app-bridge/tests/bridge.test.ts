@@ -272,6 +272,27 @@ describe("app bridge over a unix socket", () => {
     assert.equal((await c.next((m) => m.t === "entry")).entry.id, "m3");
   });
 
+  it("UNI-251: a command's echo goes out before its harness user message; the hidden session command never shows", async () => {
+    // pi runs `/unipi-app-session` as a command (no input event) — but if an
+    // input ever carries it, the phone must not see it.
+    await f.emit("input", { text: `/${SESSION_COMMAND}`, source: "extension" });
+    const echo = { type: "custom", id: "e-k", customType: "unipi-command-echo", data: { text: "/unipi:kanboard-do fix it" } };
+    const hiddenEcho = { type: "custom", id: "e-h", customType: "unipi-command-echo", data: { text: `/${SESSION_COMMAND}` } };
+    const msg = { role: "user", content: [{ type: "text", text: "[kanboard] budget…\n\nRequest: fix it" }], unipiHarness: { version: 1, source: "Kanboard", title: "Task budget" } };
+    f.branch.push(hiddenEcho, echo, { type: "message", id: "u-k", message: msg });
+    await f.emit("message_end", { message: msg });
+    const first = await c.next((m) => m.t === "entry");
+    const second = await c.next((m) => m.t === "entry");
+    assert.deepEqual([first.entry.id, second.entry.id], ["e-k", "u-k"], "echo first, then the harness message; hidden echo dropped");
+    assert.ok(!c.msgs.some((m) => m.t === "input" && String(m.text).includes(SESSION_COMMAND)), "no input line for the hidden command");
+    assert.ok(!c.msgs.some((m) => m.t === "entry" && m.entry.id === "e-h"));
+    // A fresh hello (reconnect) also hides it.
+    const h = bridge._debug.hello() as any;
+    assert.ok(!h.entries.some((e: any) => e.id === "e-h"));
+    assert.ok(h.entries.some((e: any) => e.id === "e-k"));
+    f.branch.splice(f.branch.length - 3, 3);
+  });
+
   it("streams tool lifecycle", async () => {
     await f.emit("tool_execution_start", { toolCallId: "t1", toolName: "bash", args: { command: "ls" } });
     assert.deepEqual(await c.next((m) => m.t === "tool_start"), { t: "tool_start", callId: "t1", name: "bash", args: { command: "ls" } });

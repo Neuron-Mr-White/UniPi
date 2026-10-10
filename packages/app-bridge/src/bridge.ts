@@ -41,7 +41,7 @@ import { fileSuggestions } from "./files.js";
 import { statPaths } from "./paths.js";
 import { registerPath, resolveMedia } from "./media.js";
 import { listWorkItems, stopWorkItem, backgroundWorkItem, workLogPage } from "./work.js";
-import { bus, pendingWorkLabel, subscribePendingWork, UNIPI_EVENTS } from "@pi-unipi/core";
+import { bus, pendingWorkLabel, silenceCommandEcho, subscribePendingWork, UNIPI_EVENTS } from "@pi-unipi/core";
 import type { BtwListPage } from "./wire.js";
 
 /** `media_chunk.data` (base64) stays well under the 900 KiB bridge line
@@ -115,6 +115,13 @@ export const BRIDGE_VERSION = "1.0.0";
 /** The hidden extension command the bridge uses to get a command-capable
  * context (newSession/fork/navigateTree/switchSession only exist there). */
 export const SESSION_COMMAND = "unipi-app-session";
+
+/** UNI-251: text that invokes the hidden session command. */
+export function isHiddenCommandText(text: unknown): boolean {
+  if (typeof text !== "string") return false;
+  const t = text.trim();
+  return t === `/${SESSION_COMMAND}` || t.startsWith(`/${SESSION_COMMAND} `);
+}
 
 /** UNI-221: after pending work clears while idle, how long the bridge waits
  * for the wake turn before marking the session "needs you" (finished). */
@@ -288,6 +295,12 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
   // handler run takes the oldest op. A single slot let the second request
   // overwrite the first, whose promise then never settled (UNI-219).
   const pendingOps: Array<(cctx: ExtensionCommandContext) => Promise<void>> = [];
+  // UNI-251: internal — no `❭ /unipi-app-session` echo in the TUI or the app.
+  try {
+    silenceCommandEcho(SESSION_COMMAND);
+  } catch {
+    // an older core without it: wantedEntry still hides the echo from the phone
+  }
   pi.registerCommand(SESSION_COMMAND, {
     description: "Internal: runs a UniPi app session-navigation request. Not for direct use.",
     handler: async (_args: string, cctx: ExtensionCommandContext) => {
@@ -1711,6 +1724,9 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
 
   on("input", (event) => {
     try {
+      // UNI-251: the hidden command never reaches the phone (pi runs extension
+      // commands before `input`, but an unregistered/older path must not leak it).
+      if (isHiddenCommandText(event.text)) return { action: "continue" };
       const mode = event.streamingBehavior === "steer" || event.streamingBehavior === "followUp" ? event.streamingBehavior : "prompt";
       // UNI-212: pi took a bridge-queued item we handed it — it's delivered
       // (a late echo of a first attempt also drops its retry copy).
@@ -1858,7 +1874,14 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
     setImmediate(() => {
       try {
         if (!ctx || clients.size === 0) return;
+        // UNI-251: custom entries appended just before this message (a
+        // `/unipi:*` command's echo, then its harness user message) go out
+        // FIRST, so the phone sees them in session order and can fold the
+        // echo + harness turn into one row live, not only after a reconnect.
         const leaf = ctx.sessionManager.getLeafEntry?.() ?? ctx.sessionManager.getBranch().at(-1);
+        if (m.role === "user" && (leaf as { message?: unknown } | undefined)?.message === event.message) {
+          for (const e of customsBefore(ctx.sessionManager.getBranch())) send({ t: "entry", entry: phoneSafe(e) });
+        }
         const l = leaf as { type?: string; message?: unknown; customType?: string } | undefined;
         const msg = event.message as { customType?: string; content?: unknown; display?: boolean; details?: unknown };
         // pi stores custom messages flat ({type:"custom_message", customType, content, …}).
@@ -1918,6 +1941,18 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
     if (!ctx) return;
     for (const sock of clients) write(sock, hello());
   }));
+
+  /** UNI-251: the run of custom entries right before the branch's last
+   * entry (a command's echo, state markers), wanted ones only, oldest first. */
+  const customsBefore = (branch: readonly unknown[]): unknown[] => {
+    const out: unknown[] = [];
+    for (let i = branch.length - 2; i >= 0 && out.length < 8; i--) {
+      const e = branch[i] as { type?: string };
+      if (e?.type !== "custom") break;
+      if (wantedEntry(e)) out.unshift(e);
+    }
+    return out;
+  };
 
   // Custom entries (pi.appendEntry) fire no extension event: pick them up at turn ends.
   let lastLeaf: string | undefined;

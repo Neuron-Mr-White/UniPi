@@ -4,6 +4,26 @@
  * clipped, the hello snapshot capped so its line fits one relay frame.
  */
 import { registerBase64, registerPath } from "./media.js";
+import { isSilentEcho } from "@pi-unipi/core";
+
+/** UNI-251: echoes of internal commands the phone never shows, even from
+ * sessions recorded before core learned to silence them. */
+const HIDDEN_ECHO_COMMANDS = new Set(["unipi-app-session"]);
+
+/** True for a `unipi-command-echo` of an internal (hidden) command. */
+export function hiddenEcho(entry: unknown): boolean {
+  const e = entry as { type?: string; customType?: string; data?: { text?: unknown } } | null;
+  if (!e || e.type !== "custom" || e.customType !== "unipi-command-echo") return false;
+  const text = e.data?.text;
+  if (typeof text !== "string") return false;
+  const name = text.trim().split(/\s/, 1)[0] ?? "";
+  if (HIDDEN_ECHO_COMMANDS.has(name.replace(/^\//, ""))) return true;
+  try {
+    return isSilentEcho(text);
+  } catch {
+    return false;
+  }
+}
 
 /** Images this small are sent whole (base64) in the placeholder; bigger
  * ones get a `ref` the phone fetches on demand via `media{mediaRef}`. */
@@ -143,6 +163,7 @@ export function wantedEntry(entry: unknown): boolean {
   // The system prompt is huge and never shown.
   if (e.type === "message" && e.message?.role === "system") return false;
   if (e.type === "custom" && e.customType && STATE_ONLY_CUSTOM.has(e.customType)) return false;
+  if (hiddenEcho(e)) return false;
   // Hidden custom messages (display:false, e.g. unipi-continue triggers).
   if (e.type === "custom_message" && e.display === false) return false;
   return true;

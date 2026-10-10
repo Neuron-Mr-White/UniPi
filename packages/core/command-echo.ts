@@ -17,13 +17,41 @@ import { Text } from "@earendil-works/pi-tui";
 
 export const COMMAND_ECHO_TYPE = "unipi-command-echo";
 
+/** Internal commands that must never leave an echo (UNI-251: the app
+ * bridge's hidden `unipi-app-session`, run by `pi.sendUserMessage`, showed
+ * up as `❭ /unipi-app-session` in the TUI and the app). Kept on a
+ * `Symbol.for` global so separately-installed copies of core agree. */
+const SILENT_KEY = Symbol.for("unipi.commandEcho.silent");
+function silentSet(): Set<string> {
+  const g = globalThis as { [SILENT_KEY]?: Set<string> };
+  return (g[SILENT_KEY] ??= new Set<string>());
+}
+
+/** Never echo `/name` (internal, programmatic commands). Call before or after registering. */
+export function silenceCommandEcho(name: string): void {
+  silentSet().add(name.replace(/^\//, ""));
+}
+
+/** True when `name` (with or without the leading `/`) is a silenced command. */
+export function isSilentCommand(name: string): boolean {
+  return silentSet().has(name.replace(/^\//, ""));
+}
+
+/** True when an echo text (`/name args`) belongs to a silenced command. */
+export function isSilentEcho(text: unknown): boolean {
+  if (typeof text !== "string") return false;
+  const name = text.trim().split(/\s/, 1)[0] ?? "";
+  return name.startsWith("/") && isSilentCommand(name);
+}
+
 export function withCommandEcho(pi: ExtensionAPI): ExtensionAPI {
   try {
     pi.registerEntryRenderer<{ text?: string }>(
       COMMAND_ECHO_TYPE,
       (entry, _options, theme) => {
         const text = entry.data?.text;
-        if (!text) return undefined;
+        // Old sessions persisted echoes of internal commands: hide them too.
+        if (!text || isSilentEcho(text)) return undefined;
         const t = theme as unknown as { fg?: (c: string, t: string) => string };
         const marker = t.fg?.("accent", "❭ ") ?? "❭ ";
         return new Text(`${marker}${t.fg?.("text", text) ?? text}`, 1, 0);
@@ -41,6 +69,7 @@ export function withCommandEcho(pi: ExtensionAPI): ExtensionAPI {
             ...options,
             handler: (args: string, ctx: ExtensionCommandContext) => {
               const trimmed = (args ?? "").trim();
+              if (isSilentCommand(name)) return options.handler(args, ctx);
               try {
                 target.appendEntry(COMMAND_ECHO_TYPE, {
                   text: `/${name}${trimmed ? ` ${trimmed}` : ""}`,
