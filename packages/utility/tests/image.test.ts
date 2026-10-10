@@ -70,8 +70,8 @@ describe("transports", () => {
 describe("routing", () => {
   const registry = {
     find: () => undefined,
-    getAll: () => [{ provider: "omniroute", id: "x", baseUrl: "https://router/v1" }],
-    getApiKeyForProvider: async (p: string) => (p === "omniroute" ? "ok" : undefined),
+    getAll: () => [{ provider: "gateway", id: "x", baseUrl: "https://router/v1" }],
+    getApiKeyForProvider: async (p: string) => (p === "gateway" ? "ok" : undefined),
   };
   const noEndpoint = { baseUrl: "", apiKey: "", api: "openai-images" as const };
 
@@ -80,7 +80,7 @@ describe("routing", () => {
     assert.deepEqual([or.api, or.apiKey, or.modelId], ["openrouter", "set", "black-forest-labs/flux.2-klein-4b"]);
     const fal = await resolveRoute("fal/fal-ai/flux-2/klein/4b", noEndpoint, DEFAULT_CONFIG, registry, { FAL_KEY: "fk" });
     assert.deepEqual([fal.api, fal.apiKey, fal.modelId], ["fal", "fk", "fal-ai/flux-2/klein/4b"]);
-    const omni = await resolveRoute("omniroute/openrouter/black-forest-labs/flux.2-pro", noEndpoint, DEFAULT_CONFIG, registry, {});
+    const omni = await resolveRoute("gateway/openrouter/black-forest-labs/flux.2-pro", noEndpoint, DEFAULT_CONFIG, registry, {});
     assert.deepEqual([omni.api, omni.baseUrl, omni.apiKey, omni.modelId], ["openai-images", "https://router/v1", "ok", "openrouter/black-forest-labs/flux.2-pro"]);
   });
 

@@ -10,7 +10,7 @@
  *   fal           POST https://fal.run/<model>, `sync_mode` → data URIs;
  *                 edits send `image_urls`
  *   openai-images POST {base}/images/generations; edits send an `image` array
- *                 (the shape OpenAI, OmniRoute and most gateways accept)
+ *                 (the shape OpenAI and most gateways accept)
  */
 
 import type { ImageApi } from "./settings.js";

@@ -144,7 +144,7 @@ async function callAnthropic(options: RecognizeOptions): Promise<string> {
 /**
  * Read a response body as JSON, tolerating a Server-Sent Events stream.
  *
- * Some OpenAI-compatible gateways (omniroute, for one) reply with
+ * Some OpenAI-compatible gateways reply with
  * `text/event-stream` even when streaming was never requested. Calling
  * `response.json()` on that throws `Unexpected token 'd', "data: {"id"...`,
  * which tells the user nothing. Parse the SSE frames instead and hand back a

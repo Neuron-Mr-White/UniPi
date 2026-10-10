@@ -104,18 +104,18 @@ test("engine onSet hook fires after set and unset with the layer content", () =>
 test("settings → pi: startup model + thinking write pi's settings.json and drop a remembered Fusion pair", () => {
   writeFileSync(join(PI_DIR, "settings.json"), JSON.stringify({ theme: "dark", defaultProvider: "b", defaultModel: "glm" }));
   saveRuntimeState(globalPresetPath(HOME), { effort: {}, recent: [], active: { kind: "fusion", lead: "b/glm", sidekick: "c/x" } });
-  assert.equal(applyStartupSettings({ startup: { model: "omniroute/ds/deepseek-flash", thinking: "high" } }, HOME), true);
+  assert.equal(applyStartupSettings({ startup: { model: "gateway/ds/deepseek-flash", thinking: "high" } }, HOME), true);
   const s = piSettings();
-  assert.equal(s.defaultProvider, "omniroute");
+  assert.equal(s.defaultProvider, "gateway");
   assert.equal(s.defaultModel, "ds/deepseek-flash");
   assert.equal(s.defaultThinkingLevel, "high");
   assert.equal(s.theme, "dark", "other pi settings are preserved");
-  assert.deepEqual(loadPreset(HOME, HOME).preset.active, { kind: "single", model: "omniroute/ds/deepseek-flash" });
+  assert.deepEqual(loadPreset(HOME, HOME).preset.active, { kind: "single", model: "gateway/ds/deepseek-flash" });
   // Echo of pi's own value: no write.
-  assert.equal(applyStartupSettings({ startup: { model: "omniroute/ds/deepseek-flash", thinking: "high" } }, HOME), false);
+  assert.equal(applyStartupSettings({ startup: { model: "gateway/ds/deepseek-flash", thinking: "high" } }, HOME), false);
   // Thinking alone keeps the model.
   assert.equal(applyStartupSettings({ startup: { thinking: "low" } }, HOME), true);
-  assert.deepEqual(readDefaultModel(), { key: "omniroute/ds/deepseek-flash", thinking: "low" });
+  assert.deepEqual(readDefaultModel(), { key: "gateway/ds/deepseek-flash", thinking: "low" });
 });
 
 test("pi → settings: the hub mirrors pi's current default (e.g. after pi's own /model save)", () => {

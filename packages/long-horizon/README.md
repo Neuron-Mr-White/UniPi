@@ -76,6 +76,26 @@ Namespace `long-horizon`. Open it with `/unipi:settings`.
 | `goalProgress` | `loop` | `loop` estimates after each goal turn. `status` estimates on status only. `off` stops it. |
 | `progressModel` | empty | Model for the estimate. Empty uses the verifier model. |
 
+## Judge keys and models
+
+The judge finds its API key in this order:
+
+1. The stored key (`/unipi:settings` → Decision Model → API key).
+2. The environment: `TYPESAFE_API_KEY` for `typesafe`, `OPENROUTER_API_KEY`
+   for `openrouter` and `custom`.
+3. Pi's own model registry. If a Base URL is set, the judge uses the key of
+   the pi model that has that Base URL. If no Base URL is set, it uses pi's
+   stored key for the provider (`openrouter` or `typesafe`).
+
+UniPi does not know about any one gateway or provider extension. A
+third-party extension supplies keys and models through pi itself: it calls
+`pi.registerProvider(name, { baseUrl, apiKey, models })`, or the user adds
+the provider to `~/.pi/agent/models.json` / `auth.json`. Then set the
+decision model's provider to `custom` and its Base URL to that provider's
+URL (for example `https://gateway.example/v1`). The judge uses the key that
+pi resolves for it. If no key is found, the judge is off and `defaultMode`
+applies.
+
 ## How it works
 
 At the start of each turn, the gate selects the mode. An explicit command wins.

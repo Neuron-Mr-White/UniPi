@@ -15,7 +15,7 @@
 
 import { createHash } from "node:crypto";
 import { askJudge, createJudgeTransport, effectiveProvider, judgeTimeoutMs, type FetchLike, type JudgeTransport } from "./typesafe.js";
-import { judgeEnv } from "./omniroute-key.js";
+import { judgeEnv, type JudgeKeyRegistry } from "./credentials.js";
 import type { LhMode } from "../modes.js";
 import { modeForOwnerKind } from "../modes.js";
 import type { LongHorizonSettings } from "../settings.js";
@@ -46,6 +46,8 @@ export interface ResolveDeps {
   readonly transport?: JudgeTransport;
   readonly fetchImpl?: FetchLike;
   readonly env?: Record<string, string | undefined>;
+  /** pi's model registry (ctx.modelRegistry) — provider-neutral key fallback. */
+  readonly registry?: JudgeKeyRegistry;
   readonly now?: () => number;
 }
 
@@ -76,14 +78,11 @@ async function consultJudge(
   // provider=custom without a baseUrl has no endpoint — the judge is
   // unconfigured and resolution falls through to the default mode.
   const unconfigured = settings.judge.provider === "custom" && !settings.judge.baseUrl.trim();
-  // Openrouter provider with no explicit key falls back to the omniroute bridge
-  // key, so enabling the judge works out of the box for omniroute users.
-  const env = judgeEnv(
-    settings.judge.provider,
-    deps.env ?? process.env,
-    settings.judge.baseUrl,
-    settings.judge.apiKey,
-  );
+  // Key: stored setting > environment > pi's own registry/auth storage
+  // (whatever provider pi knows for the judge endpoint — see credentials.ts).
+  const env = settings.judge.enabled && !unconfigured
+    ? await judgeEnv(settings.judge, deps.env ?? process.env, deps.registry)
+    : (deps.env ?? process.env);
   const hasKey =
     effectiveProvider(settings.judge) === "typesafe"
       ? Boolean(env.TYPESAFE_API_KEY)

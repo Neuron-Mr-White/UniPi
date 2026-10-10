@@ -393,9 +393,9 @@ describe("hub interactions (instant apply)", () => {
 describe("model catalog", () => {
   it("parses pi models.json provider/model ids", () => {
     const ids = parseModelCatalog(() =>
-      JSON.stringify({ providers: { omniroute: { models: [{ id: "zai/glm-5.3" }, { id: "cc/opus" }] }, local: { models: [{ id: "m1" }] } } }),
+      JSON.stringify({ providers: { gateway: { models: [{ id: "zai/glm-5.3" }, { id: "cc/opus" }] }, local: { models: [{ id: "m1" }] } } }),
     );
-    assert.deepEqual(ids, ["omniroute/zai/glm-5.3", "omniroute/cc/opus", "local/m1"]);
+    assert.deepEqual(ids, ["gateway/zai/glm-5.3", "gateway/cc/opus", "local/m1"]);
   });
 
   it("missing file or bad json → empty catalog", () => {

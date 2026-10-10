@@ -37,10 +37,10 @@ Storage (Q8 = global + project override):
 ```jsonc
 {
   "schema_version": 1,
-  "lead":     ["anthropic/claude-opus-4-6", "omniroute/antigravity/claude-opus-4-6-thinking"],
-  "sidekick": ["omniroute/zai/glm-5.3-flash", "omniroute/deepseek/v4-flash"],
-  "default":  { "lead": "anthropic/claude-opus-4-6", "sidekick": "omniroute/zai/glm-5.3-flash" },
-  "effort":   { "anthropic/claude-opus-4-6": "medium", "omniroute/zai/glm-5.3-flash": "high" },  // per-model remembered effort (Q4=1)
+  "lead":     ["anthropic/claude-opus-4-6", "openrouter/anthropic/claude-opus-4-6"],
+  "sidekick": ["openrouter/z-ai/glm-5.3-flash", "openrouter/deepseek/v4-flash"],
+  "default":  { "lead": "anthropic/claude-opus-4-6", "sidekick": "openrouter/z-ai/glm-5.3-flash" },
+  "effort":   { "anthropic/claude-opus-4-6": "medium", "openrouter/z-ai/glm-5.3-flash": "high" },  // per-model remembered effort (Q4=1)
   "recent":   ["anthropic/claude-opus-4-6", "..."]  // max 5, MRU, written by the picker
 }
 ```

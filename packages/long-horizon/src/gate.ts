@@ -22,6 +22,7 @@ import { LH_MODES, MODE_REGISTRY, modeForOwnerKind, type LhMode } from "./modes.
 import type { OwnerCoordinator, OwnerEvent, OwnerState } from "./owner.js";
 import { resolveMode, type ResolutionSource } from "./judge/resolve.js";
 import type { FetchLike } from "./judge/typesafe.js";
+import type { JudgeKeyRegistry } from "./judge/credentials.js";
 import { loadSettings, type LongHorizonSettings } from "./settings.js";
 import { SWARM_ORCHESTRATION_PROMPT } from "./tools/swarm.js";
 import { GRAPH_ORCHESTRATION_PROMPT } from "./tools/graph.js";
@@ -288,7 +289,7 @@ export class Gate {
     return this.turn;
   }
 
-  async resolveForTurn(prompt: string): Promise<GateState> {
+  async resolveForTurn(prompt: string, registry?: JudgeKeyRegistry): Promise<GateState> {
     // Children are the hands, the lead is the voice: no LH modes, no judge,
     // no owners in fusion/subagent children (escape hatch: UNIPI_LH_ALLOW_CHILD).
     if (isChildProcess() && process.env.UNIPI_LH_ALLOW_CHILD !== "1") {
@@ -319,6 +320,7 @@ export class Gate {
       prompt,
       ...(this.deps.fetchImpl ? { fetchImpl: this.deps.fetchImpl } : {}),
       ...(this.deps.env ? { env: this.deps.env } : {}),
+      ...(registry ? { registry } : {}),
       ...(this.deps.now ? { now: this.deps.now } : {}),
     });
     this.pendingExplicit = null;
@@ -339,8 +341,9 @@ export class Gate {
     // Decision badge: a UI-only session entry (never sent to the LLM) so the
     // user always sees how the turn was routed — rendered with a distinct
     // background by the entry renderer registered in index.ts.
-    pi.on("before_agent_start", async (event) => {
-      const state = await this.resolveForTurn(event.prompt);
+    pi.on("before_agent_start", async (event, ctx) => {
+      const registry = (ctx as { modelRegistry?: JudgeKeyRegistry } | undefined)?.modelRegistry;
+      const state = await this.resolveForTurn(event.prompt, registry);
       // pi's live loadout is authoritative for this turn (agent-session honors
       // setActiveTools from before_agent_start unless a handler edited
       // systemPromptOptions.selectedTools), so flip the mode tools before

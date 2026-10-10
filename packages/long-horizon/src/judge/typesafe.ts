@@ -72,11 +72,11 @@ function baseUrl(settings: JudgeSettings): string {
  * Chat-completions URL for the openrouter-style transport.
  *
  * OpenRouter's canonical path is `/api/v1/chat/completions`. OpenAI-compatible
- * proxies (omniroute/oino, LiteLLM, vLLM, …) instead expose `/v1/chat/completions`.
+ * proxies (LiteLLM, vLLM, self-hosted gateways, …) instead expose `/v1/chat/completions`.
  * A configured baseUrl that already ends in a version segment (`/v1`, `/api/v1`)
  * is treated as the API root and only gets `/chat/completions` appended, so any
  * OpenAI-compat gateway works by pointing baseUrl at it (e.g.
- * `https://router.oino.dev/v1`). Bare hosts fall back to OpenRouter's prefix.
+ * `https://gateway.example/v1`). Bare hosts fall back to OpenRouter's prefix.
  */
 function chatCompletionsUrl(settings: JudgeSettings): string {
   const base = baseUrl(settings);

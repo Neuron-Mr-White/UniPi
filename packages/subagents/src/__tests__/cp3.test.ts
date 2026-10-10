@@ -177,14 +177,14 @@ import { resolveSubagentModel, resolveSubagentThinking } from "../index.js";
 import { UNIPI_EVENTS, bus, resetBusForTests } from "@pi-unipi/core";
 
 function modelCtx(id = "ds/deepseek-flash") {
-  return { model: { provider: "omniroute", id } } as never;
+  return { model: { provider: "gateway", id } } as never;
 }
 
 test("model order: profile → general-parent → config → sidekickKey → parent", () => {
   const custom = fakeProfile({ id: "reviewer" });
   const cfg = { enabled: true } as import("../index.js").SubagentsConfig;
   // general always parent
-  assert.equal(resolveSubagentModel(fakeProfile({ id: "subagent_general" }), modelCtx(), { enabled: true, defaultModel: "x/y" }), "omniroute/ds/deepseek-flash");
+  assert.equal(resolveSubagentModel(fakeProfile({ id: "subagent_general" }), modelCtx(), { enabled: true, defaultModel: "x/y" }), "gateway/ds/deepseek-flash");
   // profile.model wins
   assert.equal(resolveSubagentModel(fakeProfile({ id: "reviewer", model: "m/n" }), modelCtx(), cfg), "m/n");
   // config.defaultModel for non-general
@@ -195,7 +195,7 @@ test("model order: profile → general-parent → config → sidekickKey → par
   assert.equal(resolveSubagentModel(custom, modelCtx(), { enabled: true }), "side/kick");
   // parent last
   bus.emit(UNIPI_EVENTS.FUSION_STATUS, undefined);
-  assert.equal(resolveSubagentModel(custom, modelCtx(), { enabled: true }), "omniroute/ds/deepseek-flash");
+  assert.equal(resolveSubagentModel(custom, modelCtx(), { enabled: true }), "gateway/ds/deepseek-flash");
 });
 
 test("thinking: general rides parent; defaultThinking only for others", () => {

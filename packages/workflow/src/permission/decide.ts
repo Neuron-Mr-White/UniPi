@@ -11,7 +11,9 @@ import type { PermissionMode } from "./settings.js";
 /**
  * Tools that cannot mutate the workspace, the machine, or the session — always
  * allowed. Everything else is classified below; unlisted read-only tools still
- * run in `auto`/`full`, they would only prompt in `ask` mode.
+ * run in `auto`/`full`, they would only prompt in `ask` mode. Only pi core and
+ * UniPi's own tools belong here — third-party tools are allowed by the user
+ * with a saved allow rule (`{ tool: "<name>", pattern: "*" }`).
  */
 export const READ_ONLY_TOOLS = new Set([
   // pi core
@@ -22,7 +24,7 @@ export const READ_ONLY_TOOLS = new Set([
   "web_search", "multi_web_content_read", "web_llm_summarize",
   "bg_status", "bg_logs", "read_subagent",
   "compactor_stats", "compactor_doctor", "context_budget", "ctx_budget",
-  "omniroute_status", "loop_status", "swarm_status", "view_agent_graph", "get_goal",
+  "loop_status", "swarm_status", "view_agent_graph", "get_goal",
 ]);
 
 export type Decision =

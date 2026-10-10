@@ -7,8 +7,8 @@
  *   ─────────────────────────────────────────────────────
  *     L   S    model
  *   › [x][ ]  anthropic/claude-opus-4-6
- *     [ ][x]  omniroute/zai/glm-5.3-flash      ◆ active sidekick
- *     [ ][ ]  omniroute/deepseek/v4-flash
+ *     [ ][x]  openrouter/z-ai/glm-5.3-flash     ◆ active sidekick
+ *     [ ][ ]  openrouter/deepseek/v4-flash
  *
  *   ↑/↓ select · ←/→ column · space toggle lead · Enter save · esc cancel · type to filter
  *
