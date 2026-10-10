@@ -45,6 +45,59 @@ export interface LhStateEvent {
   lastStop?: { kind: "complete" | "paused" | "budget" | "other"; at: number };
 }
 
+/** One work item of a long-horizon run (graph/swarm item or ralph checklist row), UI-shaped (UNI-222). */
+export interface LhProgressItem {
+  id: string;
+  /** Short human label (graph/swarm instruction or checklist text), clipped. */
+  label: string;
+  status: "queued" | "ready" | "running" | "done" | "failed" | "aborted";
+  /** Graph: ids this item consumes. Empty elsewhere. */
+  deps: string[];
+  /** Graph: topological level (0 = roots). */
+  wave?: number;
+  /** The committed result / failure note, clipped. */
+  summary?: string;
+  attempts?: number;
+}
+
+/** One long-horizon run (the current one or the last finished one). */
+export interface LhProgressRun {
+  mode: "goal" | "ralph" | "swarm" | "graph";
+  /** Goal objective, loop name, swarm/graph task. */
+  title: string;
+  status: "running" | "paused" | "done" | "failed" | "stopped";
+  /** Terminal / pause reason, e.g. `settled(with_failures)`. */
+  reason?: string;
+  items: LhProgressItem[];
+  counts: { total: number; done: number; running: number; failed: number; queued: number };
+  ralph?: { name: string; iteration: number; maxIterations: number; checked: number; total: number };
+  goal?: { objective: string; status: string; turn: number; maxTurns: number; percent?: number; summary?: string; estimatedAt?: number };
+  endedAt?: number;
+}
+
+/** One line of the shared progress log, generated from state transitions (never hand-written). */
+export interface LhProgressLogLine {
+  at: number;
+  text: string;
+  /** Item id the line is about, when any. */
+  item?: string;
+  /** The status the line reports (colours the line like the item's box). */
+  status?: LhProgressItem["status"] | LhProgressRun["status"];
+}
+
+/** LH_PROGRESS payload: the one truth for the TUI view and the app's Progress sheet (UNI-222). */
+export interface LhProgressEvent {
+  v: 1;
+  /** Mode of the current run, or "none" when nothing runs. */
+  mode: "goal" | "ralph" | "swarm" | "graph" | "none";
+  current?: LhProgressRun;
+  /** The last finished run (shown when idle). */
+  last?: LhProgressRun;
+  /** Newest last, bounded. */
+  log: LhProgressLogLine[];
+  updatedAt: number;
+}
+
 export interface KanboardStatusEvent {
   claims: string[];
   autowork: boolean;
@@ -85,6 +138,7 @@ export interface FusionStatusEvent {
 export interface UnipiEventMap {
   // Sticky state
   [UNIPI_EVENTS.LH_STATE]: LhStateEvent;
+  [UNIPI_EVENTS.LH_PROGRESS]: LhProgressEvent;
   [UNIPI_EVENTS.KANBOARD_STATUS]: KanboardStatusEvent;
   /** undefined = cleared */
   [UNIPI_EVENTS.FUSION_STATUS]: FusionStatusEvent | undefined;
@@ -117,6 +171,7 @@ export type UnipiEventName = keyof UnipiEventMap;
 /** Sticky state keys (bus keeps last value; new subscribers get it immediately). */
 export const STICKY_EVENTS: ReadonlySet<UnipiEventName> = new Set<UnipiEventName>([
   UNIPI_EVENTS.LH_STATE,
+  UNIPI_EVENTS.LH_PROGRESS,
   UNIPI_EVENTS.KANBOARD_STATUS,
   UNIPI_EVENTS.FUSION_STATUS,
   UNIPI_EVENTS.WORKFLOW_STATUS,

@@ -121,6 +121,16 @@ export interface FusionStatusInfo {
   sidekickToolCalls?: number;
 }
 
+/** UNI-222: the long-horizon progress snapshot (`@pi-unipi/core` LhProgressEvent), relayed verbatim. */
+export type LhProgressInfo = {
+  v: 1;
+  mode: "goal" | "ralph" | "swarm" | "graph" | "none";
+  current?: unknown;
+  last?: unknown;
+  log: unknown[];
+  updatedAt: number;
+};
+
 /** One row of the phone's "Running" section (UNI-160 §4): a background task,
  *  a subagent, or the Fusion sidekick, in one shape. */
 export interface WorkItemInfo {
@@ -219,6 +229,8 @@ export type OutMsg =
       fusion?: FusionPresetInfo;
       /** The Running section's items at connect time (UNI-160 §4). */
       work: WorkItemInfo[];
+      /** UNI-222: the long-horizon progress snapshot at connect time; absent when long-horizon never published one. */
+      lhProgress?: LhProgressInfo;
     }
   | ({ t: "state" } & Partial<RunState>)
   | ({ t: "session"; reason: string } & SessionInfo)
@@ -284,7 +296,11 @@ export type OutMsg =
    *  blank lines), same as the TUI. The bridge's own "after it ends" queue is
    *  untouched (still in `queue{}` — those are explicitly "after", not lost
    *  to the abort). */
-  | { t: "restored"; texts: string[] };
+  | { t: "restored"; texts: string[] }
+  /** UNI-222: the long-horizon progress snapshot changed (pushed to every
+   *  client, coalesced ≤ 4/s), or the reply to `lh_progress_get` (`ref`).
+   *  `progress` undefined = long-horizon isn't loaded / never published. */
+  | { t: "lh_progress"; progress: LhProgressInfo | undefined; ref?: string };
 
 /** One `@` suggestion: `value` replaces the typed `@query` (pi's completion text, e.g. `@src/a.ts` or `@"my dir/"`). */
 export type FileItem = { value: string; label: string; path: string; dir: boolean };
@@ -372,7 +388,9 @@ export type InMsg =
   /** UNI-160 §4: re-run a finished/stopped bg task (same command) or subagent (resume). */
   | { t: "work_rerun"; id: string; ref?: string }
   /** UNI-160 §4: send a running foreground subagent to the background. */
-  | { t: "work_background"; id: string; ref?: string };
+  | { t: "work_background"; id: string; ref?: string }
+  /** UNI-222: the current long-horizon progress snapshot; replies `lh_progress{progress, ref}`. */
+  | { t: "lh_progress_get"; ref?: string };
 
 const IN_TYPES = new Set([
   "prompt",
@@ -407,6 +425,7 @@ const IN_TYPES = new Set([
   "work_stop",
   "work_rerun",
   "work_background",
+  "lh_progress_get",
 ]);
 
 /** Parses one phone line; `undefined` for garbage (never throws). */
@@ -535,6 +554,8 @@ export function parseIn(line: string): InMsg | { bad: string; ref?: string } | u
     case "work_background":
       if (typeof m.id !== "string" || !m.id) return { bad: "work_background.id must be a string", ref };
       return { t: "work_background", id: m.id, ref };
+    case "lh_progress_get":
+      return { t: "lh_progress_get", ref };
     default:
       return { t: m.t as "abort" | "resync", ref };
   }

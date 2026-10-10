@@ -132,6 +132,13 @@ export class RalphLoop {
     };
   }
 
+  /** The task file's checklist rows (UNI-222 progress view). */
+  checklist(): ChecklistItem[] {
+    const state = this.state;
+    if (!state) return [];
+    return parseChecklist(tryRead(this.taskPath(state.name)) ?? "");
+  }
+
   private dir(): string {
     return this.deps.ralphDir();
   }

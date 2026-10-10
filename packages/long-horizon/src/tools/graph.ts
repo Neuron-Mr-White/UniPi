@@ -51,7 +51,7 @@ export const GRAPH_ORCHESTRATION_PROMPT = `<long-horizon-graph>
 Graph Mode is active. You are the supervisor of a dependent work graph.
 
 - Declare the graph first with update_agent_graph: items with explicit dependsOn (an item's inputs are the COMMITTED results of its dependencies). Cycles are refused.
-- Dispatch every currently-ready item with run_subagent (is_background:true for parallel items). Do not dispatch an item before its dependencies complete.
+- Dispatch every currently-ready item with run_subagent (is_background:true for parallel items) and mark it with graph_output status:"dispatched". Do not dispatch an item before its dependencies complete.
 - After dispatching a wave, call swarm_yield. Do not poll; background notifications wake you.
 - On wake, record outcomes with graph_output. Recording a completion hands you the next ready items together with their input frontiers (the dependency summaries) — pass those inputs into the child instructions instead of restating conclusions.
 - A failed item can be re-dispatched after its failure is recorded; downstream items stay blocked until it completes or is aborted.
@@ -69,7 +69,24 @@ export class GraphLedger {
   private task = "";
   private items: GraphItem[] = [];
 
+  /** UNI-222: called after every ledger mutation (progress view publish). */
+  onChange?: () => void;
+
   constructor(private readonly owner: OwnerCoordinator) {}
+
+  /** Task + full items (instruction, deps, summaries) for the progress view; null before the first run. */
+  progressView(): { task: string; items: ReadonlyArray<Readonly<GraphItem>> } | null {
+    if (this.graphId === null) return null;
+    return { task: this.task, items: this.items.map((item) => ({ ...item })) };
+  }
+
+  private changed(): void {
+    try {
+      this.onChange?.();
+    } catch {
+      // A UI listener never breaks the ledger.
+    }
+  }
 
   get(): GraphSnapshot | null {
     if (this.graphId === null) return null;
@@ -133,6 +150,7 @@ export class GraphLedger {
       attempts: 0,
     }));
     this.owner.activate("graph", task);
+    this.changed();
     return { ok: true, roots: this.readyHandoffs() };
   }
 
@@ -145,6 +163,7 @@ export class GraphLedger {
     }
     item.status = "dispatched";
     item.attempts += 1;
+    this.changed();
     return { ok: true };
   }
 
@@ -163,6 +182,7 @@ export class GraphLedger {
     item.status = status;
     if (summary !== undefined) item.summary = summary.slice(0, 400);
     if (status === "failed") {
+      this.changed();
       return { ok: true, newlyReady: [], settled: false }; // blocked until replaced or aborted
     }
     // Promote queued items whose deps are all completed.
@@ -182,6 +202,7 @@ export class GraphLedger {
       const anyFailure = this.items.some((entry) => entry.status === "failed" || entry.status === "aborted");
       this.owner.finish(anyFailure ? "settled(with_failures)" : "settled");
     }
+    this.changed();
     return { ok: true, newlyReady, settled };
   }
 
@@ -204,6 +225,7 @@ export class GraphLedger {
       (entry) => entry.status === "completed" || entry.status === "failed" || entry.status === "aborted",
     );
     if (settled) this.owner.finish("settled(with_failures)");
+    this.changed();
     return { ok: true, aborted };
   }
 
@@ -300,17 +322,23 @@ export function registerGraphTools(pi: ExtensionAPI, deps: GraphToolDeps): void 
       "until the item is re-dispatched and completes, or aborted.",
     parameters: Type.Object({
       item_id: Type.String(),
-      status: Type.Union([Type.Literal("completed"), Type.Literal("failed"), Type.Literal("aborted")]),
+      status: Type.Union([Type.Literal("dispatched"), Type.Literal("completed"), Type.Literal("failed"), Type.Literal("aborted")], {
+        description: "dispatched = the child was just started (no result yet); completed/failed/aborted = the outcome.",
+      }),
       summary: Type.Optional(Type.String({ description: "The committed result (≤400 chars) — downstream items receive it verbatim." })),
       dispatched: Type.Optional(Type.Boolean({ description: "Mark dispatched (first call before results arrive)." })),
     }),
     execute: async (_id, params) => {
       const { item_id, status, summary, dispatched } = params as {
         item_id: string;
-        status: "completed" | "failed" | "aborted";
+        status: "dispatched" | "completed" | "failed" | "aborted";
         summary?: string;
         dispatched?: boolean;
       };
+      if (status === "dispatched") {
+        const marked = deps.ledger.markDispatched(item_id);
+        return textResult(marked.ok ? `Marked ${item_id} dispatched.` : marked.reason);
+      }
       if (dispatched && status !== "aborted") {
         const marked = deps.ledger.markDispatched(item_id);
         if (!marked.ok) return textResult(marked.reason);

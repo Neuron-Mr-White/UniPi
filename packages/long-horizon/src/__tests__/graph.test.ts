@@ -145,7 +145,11 @@ test("tools register; declare + report flow through the tool surface", async () 
   assert.match(declare.content[0]?.text ?? "", /scan-a/);
 
   const output = registered.find((tool) => tool.name === "graph_output")!;
-  await output.execute({ item_id: "scan-a", status: "completed", summary: "a ok", dispatched: true });
+  // UNI-222: status "dispatched" marks a started item (no fake failure).
+  const marked = await output.execute({ item_id: "scan-a", status: "dispatched" });
+  assert.match(marked.content[0]?.text ?? "", /Marked scan-a dispatched/);
+  assert.equal(ledger.progressView()?.items.find((i) => i.itemId === "scan-a")?.status, "dispatched");
+  await output.execute({ item_id: "scan-a", status: "completed", summary: "a ok" });
   const handoff = await output.execute({ item_id: "scan-b", status: "completed", summary: "b ok", dispatched: true });
   assert.match(handoff.content[0]?.text ?? "", /inputs:/);
   assert.match(handoff.content[0]?.text ?? "", /\[scan-a\] a ok/);

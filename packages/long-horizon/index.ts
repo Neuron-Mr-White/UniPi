@@ -28,6 +28,8 @@ import { GraphLedger, registerGraphTools } from "./src/tools/graph.js";
 import { TodoStore, registerTodoTool } from "./src/tools/todo.js";
 import { wireRuntime } from "./src/runtime.js";
 import { ralphProgressData } from "./src/progress.js";
+import { lhProgressSnapshot, sameProgress, withProgressLog, type ProgressGoalEstimate } from "./src/progress-snapshot.js";
+import { registerVisualizeProgress } from "./src/visualize.js";
 
 export * from "./src/modes.js";
 export * from "./src/owner.js";
@@ -92,6 +94,34 @@ export default function longHorizon(pi: ExtensionAPI): void {
     const parked = owner.getParked();
     const stop = owner.lastStop();
     bus.emit(UNIPI_EVENTS.LH_STATE, lhStateFrom(active, parked, stop, gate.displayMode()));
+    publishProgress();
+  }
+  // UNI-222: the progress snapshot (TUI /unipi:visualize-progress + the app's
+  // Progress sheet) — one sticky LH_PROGRESS publish point, on every change.
+  let progressReady = false;
+  let goalEstimate: ProgressGoalEstimate | undefined;
+  function publishProgress(): void {
+    if (!progressReady) return;
+    try {
+      const active = owner.getActive();
+      const ownerView = active ?? owner.getParked();
+      const ralphState = ralph.get();
+      const next = lhProgressSnapshot({
+        ...(ownerView ? { owner: ownerView } : {}),
+        ...(owner.snapshot().history[0] ? { finished: owner.snapshot().history[0] } : {}),
+        graph: graph.progressView(),
+        swarm: swarm.progressView(),
+        ralph: ralphState ? { state: ralphState, checklist: ralph.checklist() } : null,
+        goal: machine.get(),
+        ...(goalEstimate ? { goalEstimate } : {}),
+        now: Date.now(),
+      });
+      const prev = bus.get(UNIPI_EVENTS.LH_PROGRESS);
+      if (sameProgress(prev, next)) return;
+      bus.emit(UNIPI_EVENTS.LH_PROGRESS, withProgressLog(prev, next));
+    } catch {
+      // The progress view never breaks the owner lifecycle.
+    }
   }
   const owner = new OwnerCoordinator({
     statePath,
@@ -230,6 +260,7 @@ export default function longHorizon(pi: ExtensionAPI): void {
   // Goal engine: machine + tools + continuation + runtime wiring.
   const machine = new GoalMachine({
     statePath: () => lhStatePath("goal.json"),
+    onChange: () => publishProgress(),
   });
   const toolset = new GoalToolset({ machine, owner });
   toolset.register(pi);
@@ -263,6 +294,7 @@ export default function longHorizon(pi: ExtensionAPI): void {
       // User-only progress bar on every loop update.
       const bar = ralphProgressData(ralph);
       if (bar) appendProgress(pi, bar);
+      publishProgress();
     },
   });
   registerRalphTools(pi, ralph);
@@ -270,7 +302,31 @@ export default function longHorizon(pi: ExtensionAPI): void {
   registerSwarmTools(pi, { ledger: swarm, owner });
   const graph = new GraphLedger(owner);
   registerGraphTools(pi, { ledger: graph });
-  const runtime = wireRuntime(pi, { machine, toolset, continuation, gate, loadSettings, ralph });
+  swarm.onChange = publishProgress;
+  graph.onChange = publishProgress;
+  const runtime = wireRuntime(pi, {
+    machine,
+    toolset,
+    continuation,
+    gate,
+    loadSettings,
+    ralph,
+    onGoalEstimate: (goalId, percent, summary) => {
+      goalEstimate = { goalId, percent, summary, at: Date.now() };
+      publishProgress();
+    },
+  });
+  progressReady = true;
+  // Ralph's checklist is ticked by the model editing the task file — no
+  // ledger event; re-derive after every tool call (deduped by sameProgress).
+  try {
+    pi.on("tool_execution_end", () => {
+      if (ralph.get()?.status === "active") publishProgress();
+    });
+  } catch {
+    // Never block load.
+  }
+  registerVisualizeProgress(pi);
   // Compaction summaries lead with the live goal / ralph state.
   registerCompactionContext("long-horizon", () =>
     longHorizonCompactionBrief(machine.getActive(), ralph.get(), join(stateDir("long-horizon", "state"), "ralph")),
@@ -433,6 +489,7 @@ export default function longHorizon(pi: ExtensionAPI): void {
       "unipi:swarm",
       "unipi:graph",
       "unipi:regular",
+      "unipi:visualize-progress",
     ],
     tools: ["create_goal", "get_goal", "update_goal", "todowrite", "ralph_done", "loop_status", "swarm_report", "swarm_status", "swarm_yield", "update_agent_graph", "graph_output", "view_agent_graph"],
   });

@@ -45,7 +45,7 @@ Swarm Mode is active. Treat parallel delegation as the preferred execution strat
 
 - Before acting, decide whether parallel delegation would materially improve speed, quality, coverage, or independent verification. If the work cannot be usefully divided into at least two meaningful independent items, continue directly.
 - Make every item bounded and self-contained: explicit scope, expected output, constraints. Avoid overlapping writes; prefer read-only investigation.
-- Dispatch each item exactly once with run_subagent (is_background:true for parallel items). Do not re-dispatch an item unless you reported it failed and are replacing it.
+- Dispatch each item exactly once with run_subagent (is_background:true for parallel items) and mark it with swarm_report status:"dispatched". Do not re-dispatch an item unless you reported it failed and are replacing it.
 - After dispatching all items, call swarm_yield. Do not poll, sleep, watch task logs, or wait synchronously; background-task notifications will wake you when work settles.
 - On wake, call swarm_status for compact statuses. Read full results only for completed items you will synthesize or failed items you must diagnose.
 - Record every outcome with swarm_report. Replace failed work by re-dispatching a corrected item and reporting it under the same id.
@@ -58,7 +58,24 @@ export class SwarmLedger {
   private task = "";
   private items: SwarmItem[] = [];
 
+  /** UNI-222: called after every ledger mutation (progress view publish). */
+  onChange?: () => void;
+
   constructor(private readonly owner: OwnerCoordinator) {}
+
+  /** Task + full items (instruction, deps, summaries) for the progress view; null before the first run. */
+  progressView(): { task: string; items: ReadonlyArray<Readonly<SwarmItem>> } | null {
+    if (this.swarmId === null) return null;
+    return { task: this.task, items: this.items.map((item) => ({ ...item })) };
+  }
+
+  private changed(): void {
+    try {
+      this.onChange?.();
+    } catch {
+      // A UI listener never breaks the ledger.
+    }
+  }
 
   get(): SwarmSnapshot | null {
     if (this.swarmId === null) return null;
@@ -81,6 +98,7 @@ export class SwarmLedger {
     this.task = task;
     this.items = items.map((item) => ({ ...item, status: "queued", attempts: 0 }));
     this.owner.activate("swarm", task);
+    this.changed();
     return { ok: true, snapshot: this.snapshot() };
   }
 
@@ -94,6 +112,7 @@ export class SwarmLedger {
     }
     item.status = "dispatched";
     item.attempts += 1;
+    this.changed();
     return { ok: true };
   }
 
@@ -107,6 +126,7 @@ export class SwarmLedger {
     }
     item.status = status;
     if (summary !== undefined) item.summary = summary.slice(0, 400);
+    this.changed();
     return { ok: true, settled: this.settled() };
   }
 
@@ -153,17 +173,23 @@ export function registerSwarmTools(pi: ExtensionAPI, deps: SwarmToolDeps): void 
       "owner and synthesize.",
     parameters: Type.Object({
       item_id: Type.String({ description: "The item id from the plan" }),
-      status: Type.Union([Type.Literal("completed"), Type.Literal("failed"), Type.Literal("aborted")]),
+      status: Type.Union([Type.Literal("dispatched"), Type.Literal("completed"), Type.Literal("failed"), Type.Literal("aborted")], {
+        description: "dispatched = the child was just started (no result yet); completed/failed/aborted = the outcome.",
+      }),
       summary: Type.Optional(Type.String({ description: "One sentence outcome (≤400 chars)." })),
       dispatched: Type.Optional(Type.Boolean({ description: "Mark dispatched (first report before results arrive)." })),
     }),
     execute: async (_id, params) => {
       const { item_id, status, summary, dispatched } = params as {
         item_id: string;
-        status: "completed" | "failed" | "aborted";
+        status: "dispatched" | "completed" | "failed" | "aborted";
         summary?: string;
         dispatched?: boolean;
       };
+      if (status === "dispatched") {
+        const marked = deps.ledger.markDispatched(item_id);
+        return textResult(marked.ok ? `Marked ${item_id} dispatched.` : marked.reason);
+      }
       if (dispatched) {
         const marked = deps.ledger.markDispatched(item_id);
         if (!marked.ok) return textResult(marked.reason);

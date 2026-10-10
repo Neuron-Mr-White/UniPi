@@ -54,6 +54,8 @@ export const UNIPI_EVENTS = {
 
   /** Long-horizon footer state (sticky; replayed to late subscribers by the bus) */
   LH_STATE: "unipi:long-horizon:state",
+  /** Long-horizon progress snapshot for /unipi:visualize-progress + the app (sticky; UNI-222) */
+  LH_PROGRESS: "unipi:long-horizon:progress",
   /** Kanboard claims/autowork status (sticky) */
   KANBOARD_STATUS: "unipi:kanboard:status",
   /** Fusion lead/sidekick display status (sticky; undefined = cleared) */

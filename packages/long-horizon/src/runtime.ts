@@ -183,6 +183,8 @@ export interface RuntimeDeps {
   readonly gate: Gate;
   readonly ralph?: RalphLoop;
   readonly loadSettings?: () => LongHorizonSettings;
+  /** UNI-222: a fresh goal estimate landed (progress view / app). */
+  readonly onGoalEstimate?: (goalId: string, percent: number, summary: string) => void;
 }
 
 interface EvalContext {
@@ -347,6 +349,11 @@ export function wireRuntime(pi: ExtensionAPI, deps: RuntimeDeps): RuntimeHandle 
       const est = parseEstimate(text);
       if (!est) return "failed";
       lastPercent = est.percent;
+      try {
+        deps.onGoalEstimate?.(goal.goalId, est.percent, est.summary);
+      } catch {
+        // A UI listener never breaks the estimate.
+      }
       appendProgress(pi, goalProgressData(deps.machine.get() ?? goal, est.percent, est.summary));
       return "ok";
     } catch {

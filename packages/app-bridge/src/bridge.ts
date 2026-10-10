@@ -23,6 +23,7 @@ import {
   type Dialog,
   type FusionPresetInfo,
   type FusionStatusInfo,
+  type LhProgressInfo,
   type InMsg,
   type InfoGroupInfo,
   type ModelInfo,
@@ -46,6 +47,8 @@ import type { BtwListPage } from "./wire.js";
 /** `media_chunk.data` (base64) stays well under the 900 KiB bridge line
  * budget; 700 KB of base64 chars per chunk leaves slack for the envelope. */
 const MEDIA_CHUNK_CHARS = 700 * 1024;
+/** UNI-222: lh_progress pushes coalesce within this window (≤ 4/s). */
+export const LH_PROGRESS_COALESCE_MS = 250;
 
 /** @pi-unipi/btw's UI-free API, read lazily off globalThis (the bridge never
  * imports @pi-unipi/btw directly: btw may not be installed). See btw.ts
@@ -599,6 +602,9 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
     }
   };
 
+  // UNI-222: long-horizon progress (sticky LH_PROGRESS on the core bus).
+  const lhProgress = (): LhProgressInfo | undefined => bus.get(UNIPI_EVENTS.LH_PROGRESS) as LhProgressInfo | undefined;
+
   const hello = (): OutMsg => {
     const c = ctx!;
     const rest = {
@@ -616,6 +622,7 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
       queue: queueView(),
       fusion: fusionPreset(),
       work: workItems(),
+      ...(lhProgress() ? { lhProgress: lhProgress() } : {}),
     };
     // Entries get whatever the rest of the hello leaves of the line budget.
     const spare = LINE_BUDGET - jsonBytes(rest) - 64 * 1024;
@@ -1366,6 +1373,9 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
         }
         return;
       }
+      case "lh_progress_get":
+        write(sock, { t: "lh_progress", progress: lhProgress(), ref: msg.ref });
+        return;
       case "watch": {
         if (msg.stats !== undefined) {
           if (msg.stats) statsWatchers.add(sock);
@@ -1589,6 +1599,18 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
     // preset too, so the phone's picker never marks a stale Fusion pair as
     // current after a single model was picked.
     if (ctx) stateWithFusion();
+  });
+
+  // UNI-222: progress pushes to every client, coalesced (a graph wave can
+  // flip several items within one tool boundary).
+  let lhTimer: ReturnType<typeof setTimeout> | undefined;
+  bus.on(pi, UNIPI_EVENTS.LH_PROGRESS, () => {
+    if (lhTimer) return;
+    lhTimer = setTimeout(() => {
+      lhTimer = undefined;
+      send({ t: "lh_progress", progress: lhProgress() });
+    }, LH_PROGRESS_COALESCE_MS);
+    lhTimer.unref?.();
   });
 
   on("input", (event) => {
