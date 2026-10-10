@@ -71,8 +71,8 @@ const PLATFORM_OPTIONS = [
 const EVENT_PHRASES: Record<string, string> = {
   ralph_loop_end: "a ralph loop iteration ends.",
   mcp_server_error: "an MCP server errors.",
-  agent_end: "the agent finishes a turn.",
-  agent_settled: "the agent settles after streaming.",
+  agent_end: "a run finishes (once per run, after every follow-up and continuation, not per message).",
+  agent_settled: "a run finishes (same single notification as agent_end; either switch turns it on).",
   session_shutdown: "the session shuts down.",
   ask_user_prompt: "the agent asks you a question.",
   permission_request: "a permission prompt opens.",

@@ -65,8 +65,8 @@ notify_user({ title: "Build failed", message: "tsc found 12 errors.", priority: 
 | `workflow_end` | on | A workflow command ends. |
 | `ralph_loop_end` | on | A ralph loop ends. |
 | `mcp_server_error` | on | An MCP server reports an error. |
-| `agent_end` | off | One agent run ends. It can occur again after a retry. |
-| `agent_settled` | off | The agent stops after all retries, compaction and queued work. |
+| `agent_end` | off | The run finished: one notification per run, sent once pi settles (after every follow-up, steer and continuation) and nothing chained a new run within 1.5 s. Not per message. While a background task, subagent or sidekick is still pending it waits and sends one "All done" instead. |
+| `agent_settled` | off | Same single "finished" notification as `agent_end`. Turning both on still sends one. |
 | `memory_consolidated` | off | Memory saves facts. |
 | `session_shutdown` | off | The session ends. |
 | `ask_user_prompt` | off | The agent asks you a question and waits. |

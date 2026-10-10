@@ -5,12 +5,14 @@
  */
 
 import { after, beforeEach, describe, it, mock } from "node:test";
+process.env.UNIPI_NOTIFY_FINISH_GRACE_MS = "0";
 import assert from "node:assert/strict";
 import { UNIPI_EVENTS, bus, isUnipiEventName, resetBusForTests } from "@pi-unipi/core";
 
 import {
   disarmRenotify,
   ALL_DONE_GRACE_MS,
+  FINISH_GRACE_MS,
   hasPendingWakeTask,
   PROMPT_DEDUP_MS,
   registerEventListeners,
@@ -107,6 +109,17 @@ async function invokeLifecycle(
   await handler(payload);
 }
 
+/**
+ * UNI-223: a run finishing = every agent_settled handler, then the finish
+ * grace (UNIPI_NOTIFY_FINISH_GRACE_MS=0 in this file). `mocked` when the
+ * test has mocked setTimeout.
+ */
+async function settleRun(h: ReturnType<typeof harness>, mocked = false): Promise<void> {
+  for (const handler of h.lifecycle.get("agent_settled") ?? []) await handler({});
+  if (mocked) mock.timers.tick(1);
+  else await new Promise((r) => setTimeout(r, 5));
+}
+
 async function invokeBus(
   h: ReturnType<typeof harness>,
   event: string,
@@ -145,7 +158,7 @@ describe("notify — agent lifecycle suppression while a wake is pending", () =>
     );
     const h = harness(fakeConfig(["agent_end"]));
 
-    await invokeLifecycle(h, "agent_end", {});
+    await settleRun(h);
 
     assert.equal(h.calls.length, 0);
   });
@@ -156,7 +169,7 @@ describe("notify — agent lifecycle suppression while a wake is pending", () =>
     );
     const h = harness(fakeConfig(["agent_settled"]));
 
-    await invokeLifecycle(h, "agent_settled", {});
+    await settleRun(h);
 
     assert.equal(h.calls.length, 0);
   });
@@ -170,7 +183,7 @@ describe("notify — agent lifecycle suppression while a wake is pending", () =>
     );
     const h = harness(fakeConfig(["agent_end"]));
 
-    await invokeLifecycle(h, "agent_end", {});
+    await settleRun(h);
 
     assert.equal(h.calls.length, 1);
     assert.equal(h.calls[0]?.eventType, "agent_end");
@@ -179,7 +192,7 @@ describe("notify — agent lifecycle suppression while a wake is pending", () =>
   it("dispatches agent_end when no background-task registry is published", async () => {
     const h = harness(fakeConfig(["agent_end"]));
 
-    await invokeLifecycle(h, "agent_end", {});
+    await settleRun(h);
 
     assert.equal(h.calls.length, 1);
     assert.equal(h.calls[0]?.eventType, "agent_end");
@@ -193,7 +206,7 @@ describe("notify — agent lifecycle suppression while a wake is pending", () =>
     } as unknown as Registry);
     const h = harness(fakeConfig(["agent_end"]));
 
-    await invokeLifecycle(h, "agent_end", {});
+    await settleRun(h);
 
     assert.equal(h.calls.length, 1);
     assert.equal(h.calls[0]?.eventType, "agent_end");
@@ -211,7 +224,7 @@ describe("notify — agent lifecycle suppression while a wake is pending", () =>
     try {
       registerWaitSource("subagents", () => "subagent running");
       const h = harness(fakeConfig(["agent_end"]));
-      await invokeLifecycle(h, "agent_end", {});
+      await settleRun(h);
       assert.equal(h.calls.length, 0);
     } finally {
       resetArbiterForTests();
@@ -232,7 +245,7 @@ describe("notify — agent lifecycle suppression while a wake is pending", () =>
     try {
       registerWaitSource("subagents", () => (subagentDone ? null : "subagent running"));
       const h = harness(fakeConfig(["agent_end"]));
-      await invokeLifecycle(h, "agent_end", {});
+      await settleRun(h);
       assert.equal(h.calls.length, 0, "suppressed while the subagent runs");
 
       subagentDone = true;
@@ -267,7 +280,7 @@ describe("notify — agent lifecycle suppression while a wake is pending", () =>
     try {
       registerWaitSource("background-tasks", () => (pending ? "bg: sleep 30" : null));
       const h = harness(fakeConfig(["agent_end"]));
-      await invokeLifecycle(h, "agent_end", {});
+      await settleRun(h, true);
       assert.equal(h.calls.length, 0, "intermediate turn suppressed");
 
       pending = false;
@@ -278,7 +291,7 @@ describe("notify — agent lifecycle suppression while a wake is pending", () =>
       assert.equal(h.calls.length, 0, "no premature 'All done'");
 
       // The wake turn settles with nothing pending: ONE real finish.
-      await invokeLifecycle(h, "agent_end", {});
+      await settleRun(h, true);
       assert.equal(h.calls.length, 1);
       assert.equal(h.calls[0]?.eventType, "agent_end");
       assert.notEqual(h.calls[0]?.title, "Pi — All Done");
@@ -289,16 +302,90 @@ describe("notify — agent lifecycle suppression while a wake is pending", () =>
     }
   });
 
-  it("runs the agent_end guard synchronously", () => {
+  it("the finish send is synchronous once the grace fires (no promise returned from the settle handler)", () => {
     setSharedTaskRegistry(fakeRegistry([]));
+    mock.timers.enable({ apis: ["setTimeout"] });
+    try {
+      const h = harness(fakeConfig(["agent_end"]));
+      const handlers = h.lifecycle.get("agent_settled") ?? [];
+      assert.ok(handlers.length > 0, "no lifecycle handler registered for agent_settled");
+      for (const handler of handlers) assert.equal(handler({}), undefined, "handler must not return a promise");
+      mock.timers.tick(1);
+      assert.equal(h.calls.length, 1, "dispatch should be observable without awaiting");
+    } finally {
+      mock.timers.reset();
+    }
+  });
+});
+
+describe("notify — UNI-223: one 'finished' per run, not per chat change", () => {
+  it("agent_end (fires for every agent loop: each reply, steer, follow-up, nudge) never notifies by itself", async () => {
     const h = harness(fakeConfig(["agent_end"]));
-    const handler = h.lifecycle.get("agent_end")?.[0];
-    assert.ok(handler, "no lifecycle handler registered for agent_end");
+    for (let i = 0; i < 5; i++) {
+      for (const handler of h.lifecycle.get("agent_end") ?? []) await handler({ messages: [] });
+    }
+    await new Promise((r) => setTimeout(r, 5));
+    assert.equal(h.calls.length, 0);
+    await settleRun(h);
+    assert.equal(h.calls.length, 1, "one notification when the run settles");
+    assert.equal(h.calls[0]?.eventType, "agent_end");
+  });
 
-    const returned = handler({});
+  it("agent_end AND agent_settled both enabled: one notification, not two", async () => {
+    const h = harness(fakeConfig(["agent_end", "agent_settled"]));
+    for (const handler of h.lifecycle.get("agent_end") ?? []) await handler({ messages: [] });
+    await settleRun(h);
+    assert.equal(h.calls.length, 1);
+  });
 
-    assert.equal(returned, undefined, "handler must not return a promise");
-    assert.equal(h.calls.length, 1, "dispatch should be observable without awaiting");
+  it("a run chained at the settle (follow-up, goal continuation, queued phone message) cancels the pending send; its own settle notifies once", () => {
+    mock.timers.enable({ apis: ["setTimeout"] });
+    const saved = process.env.UNIPI_NOTIFY_FINISH_GRACE_MS;
+    delete process.env.UNIPI_NOTIFY_FINISH_GRACE_MS;
+    try {
+      const h = harness(fakeConfig(["agent_end"]));
+      const fire = (e: string) => {
+        for (const handler of h.lifecycle.get(e) ?? []) handler({});
+      };
+      fire("agent_start");
+      fire("agent_end");
+      fire("agent_settled");
+      mock.timers.tick(FINISH_GRACE_MS / 2);
+      fire("agent_start"); // chained run
+      mock.timers.tick(FINISH_GRACE_MS * 2);
+      assert.equal(h.calls.length, 0, "the intermediate settle sent nothing");
+      fire("agent_end");
+      fire("agent_settled");
+      mock.timers.tick(FINISH_GRACE_MS - 1);
+      assert.equal(h.calls.length, 0, "waits the grace");
+      mock.timers.tick(1);
+      assert.equal(h.calls.length, 1, "the real finish");
+    } finally {
+      if (saved !== undefined) process.env.UNIPI_NOTIFY_FINISH_GRACE_MS = saved;
+      mock.timers.reset();
+    }
+  });
+
+  it("finished events disabled (the default): nothing at all, whatever happens in the chat", async () => {
+    const h = harness(structuredClone(DEFAULT_CONFIG));
+    for (const e of ["agent_start", "agent_end", "agent_settled", "agent_end", "agent_settled"]) {
+      for (const handler of h.lifecycle.get(e) ?? []) await handler({});
+    }
+    await new Promise((r) => setTimeout(r, 5));
+    assert.equal(h.calls.length, 0);
+  });
+
+  it("a subagent/sidekick child never sends the user's 'finished'", async () => {
+    const saved = process.env.UNIPI_FUSION_CHILD;
+    process.env.UNIPI_FUSION_CHILD = "1";
+    try {
+      const h = harness(fakeConfig(["agent_end"]));
+      await settleRun(h);
+      assert.equal(h.calls.length, 0);
+    } finally {
+      if (saved === undefined) delete process.env.UNIPI_FUSION_CHILD;
+      else process.env.UNIPI_FUSION_CHILD = saved;
+    }
   });
 });
 
@@ -342,7 +429,7 @@ describe("notify — event priority defaults", () => {
   it("dispatches agent_end with low priority", async () => {
     const h = harness(fakeConfig(["agent_end"]));
 
-    await invokeLifecycle(h, "agent_end", {});
+    await settleRun(h);
 
     assert.equal(h.calls.length, 1);
     assert.equal(h.calls[0]?.priority, "low");
@@ -501,7 +588,7 @@ describe("notify — re-notify unanswered blocking prompts", () => {
     t.mock.timers.enable({ apis: ["setInterval"] });
     const h = harness(fakeConfig(["agent_end", "ralph_loop_end"]));
 
-    await invokeLifecycle(h, "agent_end", {});
+    await settleRun(h);
     await invokeBus(h, UNIPI_EVENTS.RALPH_LOOP_END, { name: "ship-it", reason: "complete", iterations: 3 });
     t.mock.timers.tick(RENOTIFY_INTERVAL * 5);
 

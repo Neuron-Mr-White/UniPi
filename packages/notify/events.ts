@@ -195,6 +195,7 @@ function unregisterAll(): void {
   agentRunning = false;
   openPrompts = 0;
   disarmAllDoneWatch();
+  cancelFinish();
   for (const unsub of unsubs) {
     try { unsub(); } catch { /* ignore */ }
   }
@@ -323,8 +324,9 @@ export function registerEventListeners(
     disarmAllDoneWatch();
   });
 
-  registerAgentNotification(pi, "agent_end", config, cwd, dispatch);
-  registerAgentNotification(pi, "agent_settled", config, cwd, dispatch);
+  // UNI-223: ONE "finished" notification per run, whichever of agent_end /
+  // agent_settled is switched on (both mean "the run finished" to a user).
+  registerRunFinishedNotification(pi, config, cwd, dispatch);
 
   // Keep the agent-running flag in sync. Registered after the agent
   // notification handlers above so the first agent_end handler stays the
@@ -649,16 +651,80 @@ function disarmAllDoneWatch(): void {
   allDoneTimer = undefined;
 }
 
-/** Register an agent lifecycle notification with session name and recap support. */
-function registerAgentNotification(
+/**
+ * UNI-223: how long after a run settles the "finished" notification waits
+ * for a chained run before it goes out. pi starts a fresh run right at the
+ * settle for a queued follow-up, a goal/kanboard continuation or a phone's
+ * "after it ends" message; that run's own settle is the real finish.
+ * Exported for tests.
+ */
+export const FINISH_GRACE_MS = 1500;
+const finishGraceMs = (): number => {
+  const raw = process.env.UNIPI_NOTIFY_FINISH_GRACE_MS;
+  const v = raw ? Number(raw) : NaN;
+  return Number.isFinite(v) && v >= 0 ? v : FINISH_GRACE_MS;
+};
+
+/** Pending "finished" send, cancelled by the next agent_start. */
+let finishTimer: ReturnType<typeof setTimeout> | undefined;
+
+function cancelFinish(): void {
+  if (finishTimer) clearTimeout(finishTimer);
+  finishTimer = undefined;
+}
+
+/**
+ * UNI-223: the "run finished" notification. Before, `agent_end` notified —
+ * but pi emits agent_end for EVERY agent loop: each reply, each steer /
+ * follow-up continuation, each goal or arbiter nudge. With ntfy on, a phone
+ * got a push for every chat change. Now:
+ *  - it hooks `agent_settled` only (once per run, after every continuation),
+ *    whichever of agent_end / agent_settled the user enabled (one send, not
+ *    two, when both are on);
+ *  - it waits FINISH_GRACE_MS: a run chained at the settle (agent_start)
+ *    cancels it — that run's own settle decides;
+ *  - pending wake-capable work (bg task with a wake, subagent, fusion
+ *    handoff) still defers to the single "All done" (UNI-162/221).
+ */
+function registerRunFinishedNotification(
   pi: ExtensionAPI,
-  eventKey: "agent_end" | "agent_settled",
   config: NotifyConfig,
   cwd: string,
   dispatch: DispatchNotification = dispatchNotification
 ): void {
-  const eventConfig = config.events[eventKey];
-  if (!eventConfig?.enabled) return;
+  const eventKey: "agent_end" | "agent_settled" | undefined = config.events.agent_settled?.enabled
+    ? "agent_settled"
+    : config.events.agent_end?.enabled
+      ? "agent_end"
+      : undefined;
+  cancelFinish();
+  if (!eventKey) return;
+  const eventConfig = config.events[eventKey]!;
+  // Children (subagents, sidekicks) never own the user's "finished".
+  if (process.env.UNIPI_SUBAGENT_CHILD === "1" || process.env.UNIPI_FUSION_CHILD === "1") return;
+
+  const notify = registerAgentNotification(pi, eventKey, eventConfig.platforms, config, cwd, dispatch);
+  (pi as any).on("agent_start", () => cancelFinish());
+  (pi as any).on("agent_settled", (payload: unknown) => {
+    cancelFinish();
+    finishTimer = setTimeout(() => {
+      finishTimer = undefined;
+      notify(payload);
+    }, finishGraceMs());
+    finishTimer.unref?.();
+  });
+}
+
+/** Build the "finished" sender (session name, recap, pending-work deferral). */
+function registerAgentNotification(
+  pi: ExtensionAPI,
+  eventKey: "agent_end" | "agent_settled",
+  platforms: NotifyPlatform[],
+  config: NotifyConfig,
+  cwd: string,
+  dispatch: DispatchNotification = dispatchNotification
+): (payload: unknown) => void {
+  const eventConfig = { platforms };
 
   const handler = (payload: unknown) => {
     // A running background task with triggerOnCompletion wakes the agent in a
@@ -723,7 +789,7 @@ function registerAgentNotification(
     );
   };
 
-  (pi as any).on(eventKey, handler);
+  return handler;
 }
 
 /** Whether an event key is an agent lifecycle notification with custom handling. */
