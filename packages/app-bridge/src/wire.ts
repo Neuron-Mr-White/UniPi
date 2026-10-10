@@ -178,6 +178,24 @@ export interface Queued {
   editable: boolean;
 }
 
+/** One `btw_list` page. `question`/`answer`/`error` are all older apps read.
+ * UNI-219 added (all optional for older btw/bridges): `id` (btw's page id —
+ * the same `id` as that run's `btw_delta`/`btw_end`; `pending-…` while the
+ * request waits to start), `ref` (the phone's `btw{ref}` that started it),
+ * `done`/`running`, `toolLines`, and `thinking` (running pages only). A
+ * running page's `answer` is the text streamed so far. */
+export interface BtwListPage {
+  id?: string;
+  ref?: string;
+  question: string;
+  answer: string;
+  error?: string;
+  done?: boolean;
+  running?: boolean;
+  toolLines?: string[];
+  thinking?: string;
+}
+
 export type InputMode = "prompt" | "steer" | "followUp";
 
 /** pi → phone. */
@@ -217,11 +235,14 @@ export type OutMsg =
   | ({ t: "dialog" } & Dialog)
   | { t: "dialog_end"; id: number; by: "tui" | "phone" | "cancel" }
   | { t: "notify"; text: string; level: string }
-  /** A /unipi:btw aside streaming to the requesting phone only. */
-  | { t: "btw_delta"; id: string; kind: "text" | "thinking" | "tool"; text: string; ref?: string }
+  /** A /unipi:btw aside streaming to the requesting phone (and `btw_list{watch}` sockets).
+   * `index` (tool only): the page's toolLines slot — a "done" line replaces its "running" line. */
+  | { t: "btw_delta"; id: string; kind: "text" | "thinking" | "tool"; text: string; index?: number; ref?: string }
   | { t: "btw_end"; id: string; answer: string; error?: string; usage?: { input: number; output: number; totalTokens: number }; ref?: string }
-  /** Reply to `btw_list{}`: recent pages (question, answer) for this pi session. */
-  | { t: "btw_list"; pages: Array<{ question: string; answer: string; error?: string }>; ref?: string }
+  /** Reply to `btw_list{}`: recent pages for this pi session (oldest first).
+   * `complete` (UNI-219 bridges): every running page is listed, so a phone's
+   * page that's missing and still waiting was lost (pi restarted…). */
+  | { t: "btw_list"; pages: BtwListPage[]; complete?: true; ref?: string }
   /** `code: "busy"`: new/resume/fork/tree_go while pi is running — the phone may retry with `force:true`. */
   | { t: "error"; message: string; ref?: string; code?: "busy" }
   /** `as: "command"`: the prompt ran an extension command (no chat message follows). */
@@ -321,8 +342,10 @@ export type InMsg =
   | { t: "session_rename"; name: string; ref?: string }
   /** Ask a side question (btw): streams `btw_delta`/`btw_end` to this phone only. */
   | { t: "btw"; question: string; ref?: string }
-  /** Recent btw pages for this pi session. */
-  | { t: "btw_list"; ref?: string }
+  /** Recent btw pages for this pi session. `watch`: also stream every
+   * phone-started btw run's `btw_delta`/`btw_end` to this socket (a phone
+   * that reconnected mid-answer resumes its page). */
+  | { t: "btw_list"; watch?: boolean; ref?: string }
   /** Edit a bridge-queued (`mode:"after"`, `source:"phone"`) message's text. */
   | { t: "queue_edit"; id: string; text: string; ref?: string }
   /** Remove a bridge-queued message. */
@@ -466,7 +489,7 @@ export function parseIn(line: string): InMsg | { bad: string; ref?: string } | u
       if (typeof m.question !== "string" || !m.question.trim()) return { bad: "btw.question must be a non-empty string", ref };
       return { t: "btw", question: m.question.slice(0, 8000), ref };
     case "btw_list":
-      return { t: "btw_list", ref };
+      return m.watch === true ? { t: "btw_list", watch: true, ref } : { t: "btw_list", ref };
     case "queue_edit":
       if (typeof m.id !== "string" || !m.id) return { bad: "queue_edit.id must be a string", ref };
       if (typeof m.text !== "string") return { bad: "queue_edit.text must be a string", ref };

@@ -760,6 +760,93 @@ describe("app bridge over a unix socket", () => {
     }
   });
 
+  it("btw (UNI-219): a phone that reconnects mid-answer resumes the run — btw_list{watch} lists it running, then deltas/end reach the NEW socket", async () => {
+    const BTW_API_KEY = Symbol.for("unipi.btw.api");
+    let emit: ((e: any) => void) | undefined;
+    let finish: (() => void) | undefined;
+    const page = { id: "btw-9-1", question: "why blue?", answer: "", done: false, running: true, thinking: "hmm" };
+    (globalThis as any)[BTW_API_KEY] = {
+      ask(_cctx: unknown, _q: string, onEvent: (e: any) => void) {
+        emit = onEvent;
+        return { id: "btw-9-1", finished: new Promise<void>((r) => (finish = r)) };
+      },
+      list: () => [{ id: "btw-0-1", question: "tui q", answer: "tui a", done: true, running: false }, { ...page }],
+    };
+    const sockPath = join(dir, `${process.pid}.sock`);
+    const a = client(sockPath);
+    try {
+      await a.next((m) => m.t === "hello");
+      a.send({ t: "btw", question: "why blue?", ref: "rq1" });
+      for (let i = 0; i < 50 && !emit; i++) await new Promise((r) => setTimeout(r, 10));
+      emit!({ type: "delta", kind: "thinking", text: "hmm" });
+      assert.equal((await a.next((m) => m.t === "btw_delta" && m.ref === "rq1")).kind, "thinking");
+      // The phone's connection drops; it comes back on a new socket.
+      a.sock.destroy();
+      const b = client(sockPath);
+      try {
+        await b.next((m) => m.t === "hello");
+        b.send({ t: "btw_list", watch: true, ref: "l1" });
+        const list = await b.next((m) => m.t === "btw_list" && m.ref === "l1");
+        assert.equal(list.complete, true);
+        assert.deepEqual(list.pages.map((p: any) => [p.id, p.ref, p.running]), [["btw-0-1", undefined, false], ["btw-9-1", "rq1", true]]);
+        emit!({ type: "delta", kind: "tool", text: "✓ Read a.ts", index: 0 });
+        const tool = await b.next((m) => m.t === "btw_delta" && m.kind === "tool");
+        assert.deepEqual([tool.id, tool.ref, tool.index, tool.text], ["btw-9-1", "rq1", 0, "✓ Read a.ts"]);
+        emit!({ type: "delta", kind: "text", text: "Rayleigh." });
+        assert.equal((await b.next((m) => m.t === "btw_delta" && m.kind === "text")).text, "Rayleigh.");
+        emit!({ type: "end", answer: "Rayleigh scattering." });
+        finish!();
+        const end = await b.next((m) => m.t === "btw_end" && m.ref === "rq1");
+        assert.deepEqual([end.id, end.answer], ["btw-9-1", "Rayleigh scattering."]);
+        await new Promise((r) => setTimeout(r, 30));
+        assert.equal(b.msgs.filter((m) => m.t === "btw_end").length, 0, "btw_end only once");
+      } finally {
+        b.sock.destroy();
+      }
+    } finally {
+      delete (globalThis as any)[BTW_API_KEY];
+    }
+  });
+
+  it("btw (UNI-219): a run whose hidden command never got to start is listed as pending, and a run that throws still ends", async () => {
+    const BTW_API_KEY = Symbol.for("unipi.btw.api");
+    (globalThis as any)[BTW_API_KEY] = {
+      ask() {
+        throw new Error("no model");
+      },
+      list: () => [],
+    };
+    try {
+      c.send({ t: "btw", question: "q?", ref: "rq2" });
+      const end = await c.next((m) => m.t === "btw_end" && m.ref === "rq2");
+      assert.equal(end.error, "no model", "a failed start ends the page instead of leaving it on Thinking…");
+      c.send({ t: "btw_list", ref: "l2" });
+      assert.deepEqual((await c.next((m) => m.t === "btw_list" && m.ref === "l2")).pages, []);
+    } finally {
+      delete (globalThis as any)[BTW_API_KEY];
+    }
+  });
+
+  it("btw (UNI-219): two questions in one chunk both run (the hidden-command op queue is FIFO, not a single slot)", async () => {
+    const BTW_API_KEY = Symbol.for("unipi.btw.api");
+    const asked: string[] = [];
+    (globalThis as any)[BTW_API_KEY] = {
+      ask(_c: unknown, q: string, onEvent: (e: any) => void) {
+        asked.push(q);
+        return { id: `id-${q}`, finished: Promise.resolve().then(() => onEvent({ type: "end", answer: `A ${q}` })) };
+      },
+      list: () => [],
+    };
+    try {
+      c.sock.write(JSON.stringify({ t: "btw", question: "one", ref: "f1" }) + "\n" + JSON.stringify({ t: "btw", question: "two", ref: "f2" }) + "\n");
+      assert.equal((await c.next((m) => m.t === "btw_end" && m.ref === "f1")).answer, "A one");
+      assert.equal((await c.next((m) => m.t === "btw_end" && m.ref === "f2")).answer, "A two");
+      assert.deepEqual(asked, ["one", "two"]);
+    } finally {
+      delete (globalThis as any)[BTW_API_KEY];
+    }
+  });
+
   it("btw: a pi without @pi-unipi/btw loaded answers an error, and an empty page list", async () => {
     c.send({ t: "btw", question: "anything?", ref: "nobtw1" });
     const err = await c.next((m) => m.t === "error" && m.ref === "nobtw1");

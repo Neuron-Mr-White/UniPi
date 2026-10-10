@@ -55,6 +55,8 @@ describe("parseIn", () => {
     assert.ok("bad" in (parseIn('{"t":"btw","question":"  "}') as object));
     assert.ok("bad" in (parseIn('{"t":"btw"}') as object));
     assert.deepEqual(parseIn('{"t":"btw_list","ref":"bl"}'), { t: "btw_list", ref: "bl" });
+    assert.deepEqual(parseIn('{"t":"btw_list","watch":true,"ref":"bw"}'), { t: "btw_list", watch: true, ref: "bw" });
+    assert.deepEqual(parseIn('{"t":"btw_list","watch":"yes"}'), { t: "btw_list", ref: undefined });
     assert.deepEqual(parseIn('{"t":"queue_edit","id":"q1","text":"new text"}'), { t: "queue_edit", id: "q1", text: "new text", ref: undefined });
     assert.ok("bad" in (parseIn('{"t":"queue_edit","id":"q1"}') as object));
     assert.deepEqual(parseIn('{"t":"queue_remove","id":"q1"}'), { t: "queue_remove", id: "q1", ref: undefined });

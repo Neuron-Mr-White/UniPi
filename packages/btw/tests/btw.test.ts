@@ -205,3 +205,37 @@ test("BtwApi.ask() refuses a second question while the first is still in flight 
   await first.finished;
   assert.deepEqual(firstEvents, [{ type: "end", answer: "", error: "no key", usage: undefined }]);
 });
+
+test("BtwApi.list() (UNI-219) ids every page and marks it running until it ends, so the app can reconcile its own pages", async () => {
+  const pi = fakeExtensionApi();
+  btwExtension(pi as never);
+  await pi.emit("session_start");
+  const api = getBtwApi()!;
+  let resolveAuth: (() => void) | undefined;
+  const slowCtx = fakeCommandCtx({
+    model: { provider: "p", id: "m" },
+    modelRegistry: {
+      getApiKeyAndHeaders: () =>
+        new Promise((resolve) => {
+          resolveAuth = () => resolve({ ok: false, error: "no key" });
+        }),
+    },
+  });
+  const run = api.ask(slowCtx, "still going?", () => {});
+  const listed = api.list();
+  assert.equal(listed.length, 1);
+  assert.equal(listed[0]!.id, run.id, "the list id is the same id the ask returned (btw_delta/btw_end id)");
+  assert.match(run.id, new RegExp(`^btw-${process.pid}-\\d+$`));
+  assert.equal(listed[0]!.running, true);
+  assert.equal(listed[0]!.done, false);
+  assert.equal(listed[0]!.question, "still going?");
+
+  resolveAuth?.();
+  await run.finished;
+  const after = api.list();
+  assert.deepEqual(after.map((p) => [p.id, p.running, p.done, p.error]), [[run.id, false, true, "no key"]]);
+  // Every ask gets its own id.
+  const r2 = api.ask(fakeCommandCtx(), "q", () => {});
+  await r2.finished;
+  assert.notEqual(r2.id, run.id);
+});

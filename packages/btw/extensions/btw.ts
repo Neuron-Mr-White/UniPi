@@ -147,10 +147,17 @@ export function buildSeedEntries(ctx: {
 // ─── Page history (session-memory only, never persisted) ───────────────────
 
 export interface BtwPage {
+  /** Stable id (`btw-<pid>-<n>`), shared by the TUI panel and the app bridge
+   *  (the bridge's `btw_delta`/`btw_end` `id` and `btw_list` page ids). */
+  id: string;
   question: string;
   /** One line per tool call: "… Reading <p>" while running → "✓ <desc>" */
   toolLines: string[];
   answer: string;
+  /** Text streamed so far (the final `answer` lands at the end). */
+  partial: string;
+  /** Model reasoning streamed so far (kept for `btw_list` replays). */
+  thinking: string;
   error?: string;
   aborted?: boolean;
   done: boolean;
@@ -159,11 +166,44 @@ export interface BtwPage {
 }
 
 const pages: BtwPage[] = [];
+let pageSeq = 0;
 
-/** Read-only snapshot of recent pages (question, answer, error) for a
- *  `btw_list{}` reply — never mutate the result. */
-export function listPages(): Array<{ question: string; answer: string; error?: string }> {
-  return pages.map((p) => ({ question: p.question, answer: p.answer, error: p.error }));
+/** A fresh page with a process-unique id. */
+export function newPage(question: string): BtwPage {
+  return { id: `btw-${process.pid}-${++pageSeq}`, question, toolLines: [], answer: "", partial: "", thinking: "", done: false };
+}
+
+/** One page as the app bridge's `btw_list` sends it. `question`/`answer`/
+ *  `error` keep their original meaning (older apps read only those); `id`,
+ *  `done`/`running` and `toolLines` let the app reconcile its own pages.
+ *  A running page's `answer` is the text streamed so far. */
+export interface BtwListPage {
+  id: string;
+  question: string;
+  answer: string;
+  error?: string;
+  done: boolean;
+  running: boolean;
+  toolLines?: string[];
+  /** Running pages only: the tail of the model's reasoning so far. */
+  thinking?: string;
+}
+
+/** Tail kept for a running page's `thinking` in `btw_list`. */
+const LIST_THINKING_TAIL = 2000;
+
+/** Read-only snapshot of recent pages for a `btw_list{}` reply — never mutate the result. */
+export function listPages(): BtwListPage[] {
+  return pages.map((p) => ({
+    id: p.id,
+    question: p.question,
+    answer: p.done ? p.answer : p.partial,
+    ...(p.error ? { error: p.error } : {}),
+    done: p.done,
+    running: !p.done,
+    ...(p.toolLines.length ? { toolLines: [...p.toolLines] } : {}),
+    ...(!p.done && p.thinking ? { thinking: p.thinking.slice(-LIST_THINKING_TAIL) } : {}),
+  }));
 }
 
 /** ↑/↓ paging reducer — clamp the target index into [0, count-1]. */
@@ -229,7 +269,9 @@ function runQuestion(
   page: BtwPage,
   thinkingLevel: AiThinkingLevel,
   onUpdate: () => void,
-  onDelta?: (kind: BtwDeltaKind, text: string) => void,
+  /** `index` (tool deltas only): the `page.toolLines` slot this line fills —
+   *  a tool's "done" line replaces its own "running" line. */
+  onDelta?: (kind: BtwDeltaKind, text: string, index?: number) => void,
 ): BtwRun {
   let session: AgentSession | null = null;
   let unsubscribe: (() => void) | null = null;
@@ -270,7 +312,7 @@ function runQuestion(
           const line = formatToolLine(e.toolName, e.args, ctx.cwd, "running");
           page.toolLines.push(line);
           onUpdate();
-          onDelta?.("tool", line);
+          onDelta?.("tool", line, page.toolLines.length - 1);
         } else if (event.type === "tool_execution_end") {
           const e = event as { toolCallId: string; toolName: string; isError: boolean };
           const start = pendingStarts.get(e.toolCallId);
@@ -280,11 +322,17 @@ function runQuestion(
           else page.toolLines.push(line);
           pendingStarts.delete(e.toolCallId);
           onUpdate();
-          onDelta?.("tool", line);
+          onDelta?.("tool", line, idx ?? page.toolLines.length - 1);
         } else if (event.type === "message_update") {
           const e = event as { assistantMessageEvent?: { type?: string; delta?: string } };
-          if (e.assistantMessageEvent?.type === "text_delta" && e.assistantMessageEvent.delta) onDelta?.("text", e.assistantMessageEvent.delta);
-          else if (e.assistantMessageEvent?.type === "thinking_delta" && e.assistantMessageEvent.delta) onDelta?.("thinking", e.assistantMessageEvent.delta);
+          if (e.assistantMessageEvent?.type === "text_delta" && e.assistantMessageEvent.delta) {
+            page.partial += e.assistantMessageEvent.delta;
+            onDelta?.("text", e.assistantMessageEvent.delta);
+          }
+          else if (e.assistantMessageEvent?.type === "thinking_delta" && e.assistantMessageEvent.delta) {
+            page.thinking += e.assistantMessageEvent.delta;
+            onDelta?.("thinking", e.assistantMessageEvent.delta);
+          }
         }
       });
 
@@ -481,7 +529,7 @@ class BtwPanel implements Component {
 
 /** One streamed update from `BtwApi.ask` (mirrors the bridge's `btw_delta`/`btw_end`). */
 export type BtwEvent =
-  | { type: "delta"; kind: BtwDeltaKind; text: string }
+  | { type: "delta"; kind: BtwDeltaKind; text: string; index?: number }
   | { type: "end"; answer: string; error?: string; usage?: { input: number; output: number; totalTokens: number } };
 
 export interface BtwApi {
@@ -489,8 +537,8 @@ export interface BtwApi {
    *  Only one question runs at a time (shared with the TUI panel): a second call while
    *  one is in flight ends immediately with an error. */
   ask(cctx: ExtensionCommandContext, question: string, onEvent: (event: BtwEvent) => void): { id: string; finished: Promise<void> };
-  /** Recent pages (question, answer, error) for this pi session — shared with the TUI panel. */
-  list(): Array<{ question: string; answer: string; error?: string }>;
+  /** Recent pages for this pi session — shared with the TUI panel. */
+  list(): BtwListPage[];
 }
 
 const BTW_API_KEY = Symbol.for("unipi.btw.api");
@@ -502,12 +550,13 @@ function publishUiFreeApi(pi: ExtensionAPI, getActiveRun: () => BtwRun | null, s
   let idSeq = 0;
   const api: BtwApi = {
     ask(cctx, question, onEvent) {
-      const id = `api-${process.pid}-${++idSeq}`;
       if (getActiveRun()) {
+        const id = `btw-${process.pid}-busy-${++idSeq}`;
         const finished = Promise.resolve().then(() => onEvent({ type: "end", answer: "", error: "btw is already answering another question" }));
         return { id, finished };
       }
-      const page: BtwPage = { question, toolLines: [], answer: "", done: false };
+      const page = newPage(question);
+      const id = page.id;
       pages.push(page);
       const run = runQuestion(
         cctx,
@@ -515,7 +564,7 @@ function publishUiFreeApi(pi: ExtensionAPI, getActiveRun: () => BtwRun | null, s
         page,
         pi.getThinkingLevel() as AiThinkingLevel,
         () => {},
-        (kind, text) => onEvent({ type: "delta", kind, text }),
+        (kind, text, index) => onEvent(index === undefined ? { type: "delta", kind, text } : { type: "delta", kind, text, index }),
       );
       setActiveRun(run);
       const finished = run.finished.then(() => {
@@ -545,7 +594,7 @@ export default function btwExtension(pi: ExtensionAPI): void {
 
   function startRun(ctx: ExtensionCommandContext, question: string): void {
     if (activeRun) return; // never two answers at once
-    const page: BtwPage = { question, toolLines: [], answer: "", done: false };
+    const page = newPage(question);
     const index = pages.length;
     pages.push(page);
     const run = runQuestion(ctx, question, page, pi.getThinkingLevel() as AiThinkingLevel, () => panelRef?.tick());
@@ -589,7 +638,7 @@ export default function btwExtension(pi: ExtensionAPI): void {
   }
 
   async function headlessAsk(ctx: ExtensionCommandContext, question: string): Promise<void> {
-    const page: BtwPage = { question, toolLines: [], answer: "", done: false };
+    const page = newPage(question);
     pages.push(page);
     notify(ctx, `btw: ${question}`, "info");
     const run = runQuestion(ctx, question, page, pi.getThinkingLevel() as AiThinkingLevel, () => {});

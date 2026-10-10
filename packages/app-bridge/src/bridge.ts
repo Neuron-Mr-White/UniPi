@@ -41,6 +41,7 @@ import { statPaths } from "./paths.js";
 import { registerPath, resolveMedia } from "./media.js";
 import { listWorkItems, stopWorkItem, backgroundWorkItem, workLogPage } from "./work.js";
 import { bus, pendingWorkLabel, UNIPI_EVENTS } from "@pi-unipi/core";
+import type { BtwListPage } from "./wire.js";
 
 /** `media_chunk.data` (base64) stays well under the 900 KiB bridge line
  * budget; 700 KB of base64 chars per chunk leaves slack for the envelope. */
@@ -50,11 +51,12 @@ const MEDIA_CHUNK_CHARS = 700 * 1024;
  * imports @pi-unipi/btw directly: btw may not be installed). See btw.ts
  * publishUiFreeApi()/getBtwApi(). */
 type BtwEvent =
-  | { type: "delta"; kind: "text" | "thinking" | "tool"; text: string }
+  | { type: "delta"; kind: "text" | "thinking" | "tool"; text: string; index?: number }
   | { type: "end"; answer: string; error?: string; usage?: { input: number; output: number; totalTokens: number } };
 interface BtwApi {
   ask(cctx: ExtensionCommandContext, question: string, onEvent: (event: BtwEvent) => void): { id: string; finished: Promise<void> };
-  list(): Array<{ question: string; answer: string; error?: string }>;
+  /** Newer btw also sends `id`, `done`/`running`, `toolLines`, `thinking` (UNI-219). */
+  list(): BtwListPage[];
 }
 const BTW_API_KEY = Symbol.for("unipi.btw.api");
 const getBtwApi = (): BtwApi | undefined => (globalThis as unknown as Record<symbol, unknown>)[BTW_API_KEY] as BtwApi | undefined;
@@ -274,12 +276,15 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
 
   /** The hidden `unipi-app-session` command runs this once, with a real
    * ExtensionCommandContext, then clears it. See runCommandOp(). */
-  let pendingOp: ((cctx: ExtensionCommandContext) => Promise<void>) | undefined;
+  // A FIFO, not a single slot: two requests in the same tick (e.g. two
+  // `btw` lines in one chunk) each send the hidden command once, and each
+  // handler run takes the oldest op. A single slot let the second request
+  // overwrite the first, whose promise then never settled (UNI-219).
+  const pendingOps: Array<(cctx: ExtensionCommandContext) => Promise<void>> = [];
   pi.registerCommand(SESSION_COMMAND, {
     description: "Internal: runs a UniPi app session-navigation request. Not for direct use.",
     handler: async (_args: string, cctx: ExtensionCommandContext) => {
-      const op = pendingOp;
-      pendingOp = undefined;
+      const op = pendingOps.shift();
       if (op) await op(cctx);
     },
   });
@@ -289,7 +294,7 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
    * can be in flight; callers only run this while pi is idle. */
   const runCommandOp = (op: (cctx: ExtensionCommandContext) => Promise<void>): Promise<void> =>
     new Promise<void>((resolve, reject) => {
-      pendingOp = async (cctx) => {
+      const entry = async (cctx: ExtensionCommandContext) => {
         try {
           await op(cctx);
           resolve();
@@ -297,10 +302,12 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
           reject(error instanceof Error ? error : new Error(String(error)));
         }
       };
+      pendingOps.push(entry);
       try {
         pi.sendUserMessage(`/${SESSION_COMMAND}`, { expandPromptTemplates: true });
       } catch (error) {
-        pendingOp = undefined;
+        const i = pendingOps.indexOf(entry);
+        if (i >= 0) pendingOps.splice(i, 1);
         reject(error instanceof Error ? error : new Error(String(error)));
       }
     });
@@ -813,8 +820,45 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
     }
   };
 
-  /** btw runs in flight, keyed by id, so a `btw_delta`/`btw_end` only reaches the requesting phone. */
-  const btwRuns = new Map<string, Socket>();
+  /** btw runs this bridge started, keyed by a run key (the phone's `ref`, or
+   * a generated one). They outlive the requesting socket (UNI-219): a phone
+   * whose connection drops mid-answer reconnects on a NEW socket, sends
+   * `btw_list{watch:true}`, gets the page so far (id + ref + running) and
+   * every later `btw_delta`/`btw_end`. Before, they went only to the socket
+   * captured at request time — dead after a reconnect — so the page sat on
+   * "Thinking…" forever. */
+  interface BridgeBtwRun {
+    key: string;
+    ref?: string;
+    question: string;
+    /** btw's page id, once `ask()` returned. */
+    id?: string;
+    owner: Socket;
+  }
+  const btwRuns = new Map<string, BridgeBtwRun>();
+  /** Sockets that asked `btw_list{watch:true}`: they get every bridge btw run's deltas/end too. */
+  const btwWatchers = new Set<Socket>();
+  /** btw page id → the phone's ref, so `btw_list` can tag finished pages too (bounded). */
+  const btwRefById = new Map<string, string>();
+  let btwKeySeq = 0;
+  const btwSend = (run: BridgeBtwRun, msg: OutMsg) => {
+    const targets = new Set<Socket>([run.owner, ...btwWatchers]);
+    for (const t of targets) if (clients.has(t)) write(t, msg);
+  };
+  const btwListPages = (): BtwListPage[] => {
+    const api = getBtwApi();
+    const pages = (api ? api.list() : []).map((p) => {
+      const ref = p.id ? btwRefById.get(p.id) : undefined;
+      return ref ? { ...p, ref } : p;
+    });
+    // Runs whose hidden command hasn't started yet: no btw page exists, but
+    // the phone must not think its question was lost.
+    for (const run of btwRuns.values()) {
+      if (run.id) continue;
+      pages.push({ id: `pending-${run.key}`, question: run.question, answer: "", done: false, running: true, ...(run.ref ? { ref: run.ref } : {}) });
+    }
+    return pages;
+  };
 
   /** UNI-202: edit/remove/promote a single `tui-*` queued item (pi's own
    * steer/followUp queue, mirrored from ANY source). There's no extension
@@ -1032,28 +1076,45 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
       case "btw": {
         const api = getBtwApi();
         if (!api) return fail("btw is not installed on this pi.");
+        // Registered BEFORE the hidden command runs, so a `btw_list` right
+        // behind this request already lists it (as `pending-<key>`).
+        const key = msg.ref && !btwRuns.has(msg.ref) ? msg.ref : `b${++btwKeySeq}`;
+        const run: BridgeBtwRun = { key, ref: msg.ref, question: msg.question, owner: sock };
+        btwRuns.set(key, run);
+        const end = (answer: string, error?: string, usage?: { input: number; output: number; totalTokens: number }) => {
+          if (!btwRuns.has(key)) return;
+          btwRuns.delete(key);
+          btwSend(run, { t: "btw_end", id: run.id ?? `pending-${key}`, answer, error, usage, ref: msg.ref });
+        };
         try {
+          // The op only STARTS the question (btw needs a command context to
+          // seed its side session); it doesn't hold the hidden command for
+          // the whole answer.
           await runCommandOp(async (cctx) => {
-            let runId = "";
             const result = api.ask(cctx, msg.question, (event: BtwEvent) => {
-              if (event.type === "delta") write(sock, { t: "btw_delta", id: runId, kind: event.kind, text: event.text, ref: msg.ref });
-              else {
-                write(sock, { t: "btw_end", id: runId, answer: event.answer, error: event.error, usage: event.usage, ref: msg.ref });
-                btwRuns.delete(runId);
-              }
+              if (event.type === "delta") {
+                btwSend(run, { t: "btw_delta", id: run.id ?? `pending-${key}`, kind: event.kind, text: event.text, ...(event.index !== undefined ? { index: event.index } : {}), ref: msg.ref });
+              } else end(event.answer, event.error, event.usage);
             });
-            runId = result.id;
-            btwRuns.set(runId, sock);
-            await result.finished;
+            run.id = result.id;
+            if (msg.ref) {
+              btwRefById.set(result.id, msg.ref);
+              if (btwRefById.size > 200) btwRefById.delete(btwRefById.keys().next().value!);
+            }
+            void result.finished.then(
+              () => end("", undefined),
+              (error: unknown) => end("", error instanceof Error ? error.message : String(error)),
+            );
           });
         } catch (error) {
-          fail(error instanceof Error ? error.message : String(error));
+          // Never leave the phone's page on "Thinking…": end it with the error.
+          end("", error instanceof Error ? error.message : String(error));
         }
         return;
       }
       case "btw_list": {
-        const api = getBtwApi();
-        write(sock, { t: "btw_list", pages: api ? api.list() : [], ref: msg.ref });
+        if (msg.watch) btwWatchers.add(sock);
+        write(sock, { t: "btw_list", pages: btwListPages(), complete: true, ref: msg.ref });
         return;
       }
       case "abort": {
@@ -1319,6 +1380,7 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
       const lines = new LineSplitter();
       const drop = () => {
         clients.delete(sock);
+        btwWatchers.delete(sock);
         statsWatchers.delete(sock);
         infoWatchers.delete(sock);
       };
