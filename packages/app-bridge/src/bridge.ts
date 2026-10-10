@@ -835,7 +835,26 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
    * prompt only reaches pi's own error log), so an item is never trusted as
    * delivered until pi echoes it; otherwise it goes back to the queue. */
   let inflight: { item: BridgeQueued; timer: NodeJS.Timeout } | undefined;
-  const INFLIGHT_MS = 8_000;
+  const INFLIGHT_MS = Number(process.env.UNIPI_BRIDGE_INFLIGHT_MS) || 8_000;
+  /** UNI-223: the inflight timer only gives an item back while pi is idle.
+   * While a run is active the prompt may simply be waiting (deferred behind
+   * another settle action, or queued as a follow-up) — restoring it then
+   * delivered it a second time once both ran. */
+  const inflightExpired = () => {
+    if (!inflight) return;
+    let idle = true;
+    try {
+      idle = !ctx || ctx.isIdle();
+    } catch {
+      idle = true;
+    }
+    if (running || !idle) {
+      inflight.timer = setTimeout(inflightExpired, INFLIGHT_MS);
+      inflight.timer.unref?.();
+      return;
+    }
+    restoreInflight();
+  };
   const restoreInflight = () => {
     const pending = inflight;
     inflight = undefined;
@@ -856,12 +875,24 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
     const content = q.images?.length ? [{ type: "text" as const, text: q.text }, ...q.images.map(imageContent)] : q.text;
     if (inflight) restoreInflight();
     const { retry: _retry, ...item } = q;
-    inflight = { item, timer: setTimeout(restoreInflight, INFLIGHT_MS) };
-    inflight.timer.unref?.();
+    // UNI-223: slash text (an extension command, `/unipi:compact-then`, a
+    // skill/template) can be consumed before the bridge's own `input`
+    // listener (registered last) ever sees it — no echo would come, the item
+    // went back to the queue and ran again on every settle. Trust it as
+    // delivered once handed over.
+    const tracked = !q.text.trimStart().startsWith("/");
+    if (tracked) {
+      inflight = { item, timer: setTimeout(inflightExpired, INFLIGHT_MS) };
+      inflight.timer.unref?.();
+    }
     try {
       pi.sendUserMessage(content, { deliverAs: "followUp", expandPromptTemplates: true } as never);
     } catch {
-      restoreInflight();
+      if (tracked) restoreInflight();
+      else {
+        bridgeQueue.unshift(item);
+        send({ t: "queue", items: queueView() });
+      }
     }
   };
 
@@ -874,6 +905,35 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
     if (!next) return;
     send({ t: "queue", items: queueView() });
     deliverQueued(next);
+  };
+
+  /** UNI-223: the safety net behind the settle-time delivery. Anything that
+   * left an "after it ends" item sitting in the queue while pi is truly idle
+   * — a settle that saw pi busy (a compaction started at settle), an item
+   * given back after pi rejected it ("compaction in progress", no auth), an
+   * abort with no settle of its own — gets delivered on the bridge's 1 s
+   * tick once pi has stayed idle for two ticks. Never while a phone Stop
+   * holds the queue (cleared by the next run's agent_start), never while
+   * an item is still in flight (one at a time, in order). */
+  let idleTicks = 0;
+  const pumpQueue = () => {
+    if (!bridgeQueue.length || inflight || holdQueue || running) {
+      idleTicks = 0;
+      return;
+    }
+    let idle = false;
+    try {
+      idle = !!ctx && ctx.isIdle();
+    } catch {
+      idle = false;
+    }
+    if (!idle) {
+      idleTicks = 0;
+      return;
+    }
+    if (++idleTicks < 2) return;
+    idleTicks = 0;
+    deliverNextQueued();
   };
 
   // `path` images were uploaded via the host's blob channel (same machine as
@@ -938,9 +998,33 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
    * edit/re-send; `queue_promote` sends the edited item right away instead
    * of re-queuing it. */
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-  /** Set by a phone-initiated abort so that abort's own agent_end doesn't
-   * auto-deliver the next "after it ends" item (a Stop isn't an ending). */
-  let skipNextDelivery = false;
+  /** Set by a phone-initiated abort so that abort's own settle doesn't
+   * auto-deliver the next "after it ends" item (a Stop isn't an ending).
+   * UNI-223: held until the NEXT run starts (agent_start), not just the
+   * next settle — an abort that never settles (compaction, already idle)
+   * used to leave the flag set and swallow a later, real ending. */
+  let holdQueue = false;
+  let holdTimer: NodeJS.Timeout | undefined;
+  const releaseHold = () => {
+    holdQueue = false;
+    if (holdTimer) clearTimeout(holdTimer);
+    holdTimer = undefined;
+  };
+  /** UNI-223: after a phone "send now" (abort + fresh prompt) the queue
+   * holds until that prompt's run starts (agent_start releases it), so the
+   * abort's own settle can't slip a queued item in ahead of it. A prompt
+   * that never starts a run (an extension command, a rejected prompt)
+   * releases it after HOLD_MS instead of holding the queue for good. */
+  const HOLD_MS = Number(process.env.UNIPI_BRIDGE_HOLD_MS) || 5_000;
+  const holdUntilNextRun = () => {
+    holdQueue = true;
+    if (holdTimer) clearTimeout(holdTimer);
+    holdTimer = setTimeout(() => {
+      holdTimer = undefined;
+      holdQueue = false;
+    }, HOLD_MS);
+    holdTimer.unref?.();
+  };
   /** ctx.abort() in the TUI runs pi's own restoreQueuedMessagesToEditor,
    * which dumps every queued message into the TUI editor. The phone owns
    * this abort (it re-sends or gets `restored`), so put the editor back. */
@@ -951,7 +1035,9 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
     } catch {
       before = undefined;
     }
-    skipNextDelivery = true;
+    holdQueue = true;
+    if (holdTimer) clearTimeout(holdTimer);
+    holdTimer = undefined;
     c.abort();
     if (before !== undefined) {
       try {
@@ -979,6 +1065,10 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
       await abortKeepingEditor(c);
       const deadline = Date.now() + 10_000;
       while (!c.isIdle() && Date.now() < deadline) await sleep(50);
+      // The abort was only the means to edit pi's queue: the re-sent items
+      // start the next run (agent_start releases the hold); if nothing is
+      // re-sent the hold lapses and the "after" queue delivers normally.
+      holdUntilNextRun();
     }
     send({ t: "queue", items: queueView() });
     const contentOf = (q: (typeof tuiQueue)[number]) => (q.images?.length ? [{ type: "text" as const, text: q.text }, ...q.images.map(imageContent)] : q.text);
@@ -1040,12 +1130,14 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
           // Stop isn't an ending: the abort's settle must not deliver an
           // "after it ends" item ahead of this one (UNI-212).
           if (!idle) {
-            skipNextDelivery = true;
+            holdQueue = true;
             c.abort();
             const deadline = Date.now() + 10_000;
             while (!c.isIdle() && Date.now() < deadline) await new Promise((r) => setTimeout(r, 50));
-            // The abort has settled: the next settle is this prompt's own.
-            skipNextDelivery = false;
+            // UNI-223: pi reports idle BEFORE extensions see the abort's
+            // agent_settled; releasing the hold here let that settle deliver
+            // a queued item ahead of this prompt. Hold until its run starts.
+            holdUntilNextRun();
           }
           const content = msg.images?.length ? [{ type: "text" as const, text: msg.text }, ...msg.images.map(imageContent)] : msg.text;
           const name = /^\/(\S+)/.exec(msg.text)?.[1];
@@ -1126,11 +1218,11 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
         }
         // to === "now": abort, wait for idle, then send as a fresh prompt.
         if (!c.isIdle()) {
-          skipNextDelivery = true;
+          holdQueue = true;
           c.abort();
           const deadline = Date.now() + 10_000;
           while (!c.isIdle() && Date.now() < deadline) await new Promise((r) => setTimeout(r, 50));
-          skipNextDelivery = false;
+          holdUntilNextRun();
         }
         try {
           pi.sendUserMessage(content, { expandPromptTemplates: true } as never);
@@ -1195,7 +1287,10 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
         // left alone (explicitly "after", not lost to this abort).
         const texts = tuiQueue.map((q) => q.text);
         tuiQueue.length = 0;
-        if (c.isIdle()) skipNextDelivery = false;
+        // A Stop isn't an ending: the "after it ends" queue holds until the
+        // next run starts (agent_start releases it), then delivers after
+        // THAT run. Stop while already idle holds nothing.
+        if (c.isIdle()) releaseHold();
         else await abortKeepingEditor(c);
         ack();
         if (texts.length) send({ t: "restored", texts });
@@ -1499,6 +1594,7 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
       // A pending start→end shorter than one poll is never seen as a
       // change; the ticker still finds the final clear.
       checkFinalSettle();
+      pumpQueue();
       if (clients.size > 0) pushWork();
       if (statsWatchers.size > 0) pushStats();
       if (infoWatchers.size > 0) pushInfo();
@@ -1638,13 +1734,10 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
           images: event.images?.length ? event.images.map((i: { data: string; mimeType: string }) => ({ mime: i.mimeType, data: i.data })) : undefined,
         });
         send({ t: "queue", items: queueView() });
-      } else if (event.source !== "extension" && bridgeQueue.length) {
-        // The user started something new before the queued items could be
-        // delivered on the next agent_end: stop auto-delivering them (the
-        // phone can still edit/remove/promote what remains by hand).
-        bridgeQueue.length = 0;
-        send({ t: "queue", items: queueView() });
       }
+      // UNI-223: a new TUI prompt no longer wipes the bridge's queue. "After
+      // it ends" items stay queued and go after THAT run ends (the user saw
+      // them sit there, typed in the terminal, and they silently vanished).
       const i = phoneInputs.findIndex((p) => p.text === event.text);
       const ref = i >= 0 ? phoneInputs.splice(i, 1)[0]!.ref : undefined;
       send({ t: "input", text: clipText(event.text ?? "", 64 * 1024), source: event.source, mode, ...(ref ? { ref } : {}) });
@@ -1655,8 +1748,8 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
   });
 
   on("agent_start", safe(() => {
-    // the aborted run's agent_end already passed (abort waits for idle)
-    skipNextDelivery = false;
+    // A fresh run after a phone Stop: the queue delivers after THIS one.
+    releaseHold();
     running = true;
     idleWaitingSince = undefined;
     // The wake turn (or any new turn) owns the finish now.
@@ -1692,8 +1785,17 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
     // a prompt sent there was rejected ("Agent is already processing") and
     // the item silently lost. During agent_settled pi defers a prompt until
     // the settle finishes, then starts it as a fresh run.
-    if (skipNextDelivery) skipNextDelivery = false;
-    else if (!c || c.isIdle()) deliverNextQueued();
+    // UNI-223: a settle that sees pi busy (a compaction started at settle,
+    // another extension's prompt) or a held queue delivers nothing here —
+    // the 1 s tick's pumpQueue() picks the item up once pi is really idle.
+    if (holdQueue || inflight) return;
+    let idle = true;
+    try {
+      idle = !c || c.isIdle();
+    } catch {
+      idle = true;
+    }
+    if (idle) deliverNextQueued();
   }));
   // A phone already connected has already seen the end live (no "needs
   // you" badge for someone watching); one with no phone open gets the

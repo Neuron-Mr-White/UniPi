@@ -11,6 +11,8 @@ import { join } from "node:path";
 const dir = mkdtempSync(join(tmpdir(), "app-bridge-"));
 process.env.UNIPI_BRIDGE_DIR = dir;
 process.env.UNIPI_BRIDGE_PENDING_GRACE_MS = "150";
+process.env.UNIPI_BRIDGE_HOLD_MS = "100";
+process.env.UNIPI_BRIDGE_INFLIGHT_MS = "400";
 const { createBridge, SESSION_COMMAND } = await import("../src/bridge.js");
 
 type Handler = (event: any, ctx: any) => unknown;
@@ -553,7 +555,7 @@ describe("app bridge over a unix socket", () => {
     await f.emit("input", { text: "fragile", source: "extension" });
   });
 
-  it("bridge queue: only the first item delivers per settle; the user starting something new clears the rest", async () => {
+  it("bridge queue: only the first item delivers per settle; a new TUI prompt keeps the rest (UNI-223), delivered after THAT run", async () => {
     f.setIdle(false);
     c.send({ t: "prompt", text: "one", mode: "after", ref: "nq1" });
     await c.next((m) => m.t === "ack" && m.ref === "nq1");
@@ -568,13 +570,119 @@ describe("app bridge over a unix socket", () => {
     const q1 = await c.next((m) => m.t === "queue");
     assert.equal(q1.items.length, 1, "only one item left: the second waits for the next settle");
     assert.equal(f.sent.length, beforeSent + 1);
+    // "one" starts its run, and the user types something new in the TUI
+    // while it runs: "two" stays queued (it used to be wiped silently).
+    await f.emit("agent_start", {});
+    f.setIdle(false);
     await f.emit("input", { text: "one", source: "extension" });
-
-    // The user starts something new (TUI input) before the next agent_end: the rest is dropped.
-    await f.emit("input", { text: "user typed something else", source: "interactive" });
-    const q2 = await c.next((m) => m.t === "queue");
-    assert.deepEqual(q2.items, []);
+    await f.emit("input", { text: "user typed something else", source: "interactive", streamingBehavior: "followUp" });
+    c.send({ t: "resync", ref: "nq-sync" });
+    const hello = await c.next((m) => m.t === "hello" );
+    assert.deepEqual(hello.queue.filter((x: any) => x.source === "phone").map((x: any) => x.text), ["two"]);
     f.setIdle(true);
+    await f.emit("agent_settled", {});
+    await c.next((m) => m.t === "queue" && m.items.length === 0);
+    assert.equal(f.sent.at(-1)!.content, "two");
+    await f.emit("input", { text: "two", source: "extension" });
+    c.msgs.length = 0; // stale pushes must not satisfy the next test's waits
+  });
+
+  it("UNI-223: a settle that sees pi busy (compaction at settle) delivers nothing; the idle tick delivers the item once pi is really idle — exactly once", async () => {
+    f.setIdle(false);
+    await f.emit("agent_start", {});
+    c.send({ t: "prompt", text: "late after", mode: "after", ref: "la1" });
+    await c.next((m) => m.t === "ack" && m.ref === "la1");
+    await c.next((m) => m.t === "queue" && m.items.length === 1);
+    const beforeSent = f.sent.length;
+    // pi is still busy at settle (e.g. auto-compaction started there).
+    await f.emit("agent_settled", {});
+    assert.equal(f.sent.length, beforeSent, "nothing handed to a busy pi");
+    // Compaction ends: no further event reaches the bridge — the tick does.
+    f.setIdle(true);
+    await c.next((m) => m.t === "queue" && m.items.length === 0, 4000);
+    assert.equal(f.sent.length, beforeSent + 1);
+    assert.deepEqual(f.sent.at(-1), { content: "late after", opts: { deliverAs: "followUp", expandPromptTemplates: true } });
+    await f.emit("input", { text: "late after", source: "extension" });
+    // A later settle doesn't send it again.
+    await f.emit("agent_settled", {});
+    await new Promise((r) => setTimeout(r, 2300));
+    assert.equal(f.sent.length, beforeSent + 1, "delivered exactly once");
+    c.msgs.length = 0; // stale pushes must not satisfy the next test's waits
+  });
+
+  it("UNI-223: with a wake-capable task pending, the after item still goes at the settle; nothing is lost across the wake turn", async () => {
+    const { registerWaitSource, resetArbiterForTests } = await import("@pi-unipi/core");
+    const unregister = registerWaitSource("background-tasks", () => "bg: sleep 20");
+    try {
+      f.setIdle(false);
+      await f.emit("agent_start", {});
+      c.send({ t: "prompt", text: "A1", mode: "after", ref: "wk1" });
+      c.send({ t: "prompt", text: "A2", mode: "after", ref: "wk2" });
+      await c.next((m) => m.t === "ack" && m.ref === "wk2");
+      await c.next((m) => m.t === "queue" && m.items.length === 2);
+      await f.emit("agent_end", { messages: [] });
+      f.setIdle(true);
+      await f.emit("agent_settled", {});
+      assert.equal(f.sent.at(-1)!.content, "A1");
+      await f.emit("input", { text: "A1", source: "extension" });
+      await f.emit("agent_start", {});
+      f.setIdle(false);
+      await f.emit("agent_settled", {});
+      // busy settle (the wake turn started right away): A2 waits
+      assert.equal(f.sent.at(-1)!.content, "A1");
+      // the wake turn's own settle delivers A2
+      f.setIdle(true);
+      await f.emit("agent_settled", {});
+      assert.equal(f.sent.at(-1)!.content, "A2");
+      await f.emit("input", { text: "A2", source: "extension" });
+      assert.equal(f.sent.filter((x) => x.content === "A1").length, 1);
+      assert.equal(f.sent.filter((x) => x.content === "A2").length, 1);
+    c.msgs.length = 0; // stale pushes must not satisfy the next test's waits
+    } finally {
+      unregister();
+      resetArbiterForTests();
+    }
+  });
+
+  it("UNI-223: a phone Stop holds the queue only until the next run starts; that run's settle delivers", async () => {
+    f.setIdle(false);
+    await f.emit("agent_start", {});
+    c.send({ t: "prompt", text: "after stop", mode: "after", ref: "st1" });
+    await c.next((m) => m.t === "ack" && m.ref === "st1");
+    await c.next((m) => m.t === "queue" && m.items.length === 1);
+    c.send({ t: "abort", ref: "st2" });
+    await c.next((m) => m.t === "ack" && m.ref === "st2");
+    const beforeSent = f.sent.length;
+    // The abort's own settle: a Stop isn't an ending.
+    await f.emit("agent_settled", {});
+    await new Promise((r) => setTimeout(r, 2300));
+    assert.equal(f.sent.length, beforeSent, "held after a Stop (no delivery, not even from the idle tick)");
+    // The user's next run, then its end: delivered.
+    await f.emit("agent_start", {});
+    await f.emit("agent_settled", {});
+    await c.next((m) => m.t === "queue" && m.items.length === 0);
+    assert.equal(f.sent.at(-1)!.content, "after stop");
+    await f.emit("input", { text: "after stop", source: "extension" });
+    c.msgs.length = 0; // stale pushes must not satisfy the next test's waits
+  });
+
+  it("UNI-223: an in-flight item is never restored (and sent twice) while pi is busy; slash items aren't tracked", async () => {
+    f.setIdle(false);
+    await f.emit("agent_start", {});
+    c.send({ t: "prompt", text: "/unipi:goal ship it", mode: "after", ref: "sl1" });
+    await c.next((m) => m.t === "ack" && m.ref === "sl1");
+    await c.next((m) => m.t === "queue" && m.items.length === 1);
+    f.setIdle(true);
+    await f.emit("agent_settled", {});
+    await c.next((m) => m.t === "queue" && m.items.length === 0);
+    assert.equal(f.sent.at(-1)!.content, "/unipi:goal ship it");
+    const n = f.sent.length;
+    // A command never echoes through the bridge's input listener: it must
+    // not come back to the queue and run again on a later settle.
+    await f.emit("agent_settled", {});
+    await new Promise((r) => setTimeout(r, 2300));
+    assert.equal(f.sent.length, n);
+    c.msgs.length = 0; // stale pushes must not satisfy the next test's waits
   });
 
   it("queue_promote: 'steer' sends right away as a steer, 'now' aborts/waits/sends as a prompt", async () => {
