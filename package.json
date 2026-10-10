@@ -71,9 +71,6 @@
       "packages/kanboard/skills",
       "packages/updater/skills",
       "packages/subagents/skills"
-    ],
-    "prompts": [
-      "packages/subagents/prompts"
     ]
   },
   "peerDependencies": {
