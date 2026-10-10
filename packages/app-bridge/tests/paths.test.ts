@@ -1,9 +1,18 @@
 import { describe, it, beforeEach } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { PATHS_STAT_MAX, clearTreeIndex, resolveAgainst, statPaths } from "../src/paths.js";
+import {
+  PATHS_STAT_MAX,
+  clearSafeRoots,
+  clearTreeIndex,
+  forbiddenRoot,
+  hostSafeRoots,
+  resolveAgainst,
+  resolveSafeRoots,
+  statPaths,
+} from "../src/paths.js";
 import { parseIn } from "../src/wire.js";
 
 describe("paths_stat (UNI-204)", () => {
@@ -27,7 +36,9 @@ describe("paths_stat (UNI-204)", () => {
 
   beforeEach(() => clearTreeIndex());
 
-  const stat = (...paths: string[]) => statPaths(paths, cwd, home);
+  // No extra roots here: the fixture itself lives under /tmp (an extra root by default).
+  const NONE = { roots: [], deny: [] };
+  const stat = (...paths: string[]) => statPaths(paths, cwd, home, NONE);
 
   it("resolves relative, ./ and absolute paths against the cwd", async () => {
     assert.deepEqual((await stat("README.md", "./README.md", join(cwd, "README.md"))).map((s) => [s.kind, s.resolved]), [
@@ -74,9 +85,9 @@ describe("paths_stat (UNI-204)", () => {
   });
 
   it("skips the suffix lookup when the cwd is home", async () => {
-    const [s] = await statPaths(["todo.md"], home, home);
+    const [s] = await statPaths(["todo.md"], home, home, NONE);
     assert.equal(s!.kind, "missing");
-    assert.equal((await statPaths(["notes/todo.md"], home, home))[0]!.kind, "file");
+    assert.equal((await statPaths(["notes/todo.md"], home, home, NONE))[0]!.kind, "file");
   });
 
   it("does not look inside node_modules for suffix matches", async () => {
@@ -108,5 +119,76 @@ describe("parseIn paths_stat", () => {
     const parsed = parseIn(JSON.stringify({ t: "paths_stat", paths: Array.from({ length: 300 }, () => "/a".repeat(3000)) })) as { paths: string[] };
     assert.equal(parsed.paths.length, 200);
     assert.equal(parsed.paths[0]!.length, 4096);
+  });
+});
+
+describe("paths_stat extra safe roots (UNI-220)", () => {
+  const base = realpathSync(mkdtempSync(join(tmpdir(), "bridge-roots-")));
+  const home = join(base, "home");
+  const cwd = join(home, "proj");
+  const scratch = join(base, "scratch");
+  const outside = join(base, "elsewhere");
+  for (const d of [cwd, join(scratch, "sub"), join(scratch, "carved"), outside]) mkdirSync(d, { recursive: true });
+  writeFileSync(join(scratch, "sub/shot.png"), "x");
+  writeFileSync(join(scratch, "carved/key.txt"), "x");
+  writeFileSync(join(outside, "secret.txt"), "x");
+  symlinkSync(join(outside, "secret.txt"), join(scratch, "link.txt"));
+  symlinkSync("/etc", join(scratch, "etc"));
+  const extra = { roots: [scratch], deny: [join(scratch, "carved")] };
+  const stat = (...paths: string[]) => statPaths(paths, cwd, home, extra);
+
+  it("a file under an extra root (e.g. /tmp) is found, absolute or via ..", async () => {
+    const [abs, rel] = await stat(join(scratch, "sub/shot.png"), "../../scratch/sub/shot.png");
+    assert.equal(abs!.kind, "file");
+    assert.equal(rel!.kind, "file");
+    assert.equal((await stat(join(scratch, "sub")))[0]!.kind, "dir");
+  });
+
+  it("symlink escapes, carve-outs and other folders stay missing", async () => {
+    assert.deepEqual(
+      (await stat(join(scratch, "link.txt"), join(scratch, "etc/hostname"), join(scratch, "carved/key.txt"), join(outside, "secret.txt"), "/etc/passwd")).map((s) => s.kind),
+      ["missing", "missing", "missing", "missing", "missing"],
+    );
+  });
+
+  it("forbiddenRoot matches the host's list", () => {
+    for (const bad of ["/", "/etc", "/usr/local", "/proc", "/sys", "/dev", "/boot", "/root", "/var", "/var/lib", "/run", "/run/media/bob", "/home", "/home/bob"])
+      assert.equal(forbiddenRoot(bad, "/home/me", "me"), true, bad);
+    for (const ok of ["/tmp", "/var/tmp", "/mnt", "/media", "/run/media/me", "/srv", "/opt", "/data", "/home/me/x"])
+      assert.equal(forbiddenRoot(ok, "/home/me", "me"), false, ok);
+  });
+
+  it("resolveSafeRoots: existing defaults, allow adds, deny removes, forbidden/symlinked-to-system never", () => {
+    symlinkSync("/usr", join(base, "usr-link"));
+    const tmp = realpathSync("/tmp");
+    const d = resolveSafeRoots({}, home, "me");
+    assert.ok(d.includes(tmp), String(d));
+    assert.ok(d.every((r) => !forbiddenRoot(r, home, "me")));
+    assert.ok(!resolveSafeRoots({ deny: ["/tmp"] }, home, "me").includes(tmp));
+    const custom = resolveSafeRoots({ allow: [outside, "/etc", "/", join(base, "usr-link"), "relative", 5] }, home, "me");
+    assert.ok(custom.includes(outside));
+    assert.ok(!custom.some((r) => r === "/etc" || r === "/" || r.startsWith("/usr")));
+  });
+
+  it("hostSafeRoots reads the host config.json fs block (UNIPI_HOST_DIR)", () => {
+    const hostDir = join(base, "host");
+    mkdirSync(hostDir);
+    writeFileSync(join(hostDir, "config.json"), JSON.stringify({ forwarding: {}, fs: { allow: [outside], deny: [scratch] } }));
+    const prev = process.env.UNIPI_HOST_DIR;
+    process.env.UNIPI_HOST_DIR = hostDir;
+    try {
+      clearSafeRoots();
+      const r = hostSafeRoots(1, home);
+      assert.ok(r.roots.includes(outside));
+      assert.deepEqual(r.deny, [scratch]);
+      // A deny on a parent drops every root under it (same as the host).
+      writeFileSync(join(hostDir, "config.json"), JSON.stringify({ fs: { allow: [outside], deny: [base] } }));
+      clearSafeRoots();
+      assert.ok(!hostSafeRoots(2, home).roots.includes(outside));
+    } finally {
+      if (prev === undefined) delete process.env.UNIPI_HOST_DIR;
+      else process.env.UNIPI_HOST_DIR = prev;
+      clearSafeRoots();
+    }
   });
 });

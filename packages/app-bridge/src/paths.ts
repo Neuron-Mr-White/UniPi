@@ -7,17 +7,21 @@
  * Resolution, per path:
  * - `~` / `~/…` expands against $HOME; absolute passes through; anything
  *   else resolves against the session cwd.
- * - Policy (same scope as the host's fs access / `file_share`): the
- *   resolved path must sit inside the session cwd or inside $HOME —
- *   anything else answers `missing` (never says whether it exists).
+ * - Policy (same scope as the host's fs access): the resolved path must
+ *   sit inside the session cwd, inside $HOME, or (UNI-220) inside one of
+ *   the host's extra safe roots — `/tmp`, `/var/tmp`, `/mnt`, `/media`,
+ *   `/run/media/$USER`, `/srv`, `/opt` when they exist, plus/minus the
+ *   owner's `unipi-host fs allow|deny` (`config.json` `fs` block). Extra
+ *   roots are judged on the realpath, so a symlink can't escape them.
+ *   Anything else answers `missing` (never says whether it exists).
  * - A relative path that doesn't exist at the cwd (`Composer.tsx`,
  *   `src/lib/chat/store.ts` said from a sub-package's point of view) is
  *   looked up as a path SUFFIX in a cached listing of the cwd tree; a
  *   unique match wins, an ambiguous one stays `missing`.
  */
 import { spawn } from "node:child_process";
-import { readdirSync, statSync } from "node:fs";
-import { homedir } from "node:os";
+import { readFileSync, readdirSync, realpathSync, statSync } from "node:fs";
+import { homedir, userInfo } from "node:os";
 import { join, relative, resolve as resolvePath, sep } from "node:path";
 import { findFd } from "./files.js";
 
@@ -48,6 +52,90 @@ const kindOf = (abs: string): PathKind => {
     return "missing";
   }
 };
+
+// ---- extra safe roots (UNI-220, mirrors unipi-host's fs_scope.rs) ---------
+
+/** The host's default extra roots; only existing ones count. */
+export const DEFAULT_SAFE_ROOTS = ["/tmp", "/var/tmp", "/mnt", "/media", "/run/media/$USER", "/srv", "/opt"] as const;
+const FORBIDDEN = ["/etc", "/usr", "/proc", "/sys", "/dev", "/boot", "/root", "/bin", "/sbin", "/lib", "/lib32", "/lib64", "/libx32", "/var", "/run", "/snap", "/lost+found"];
+
+/** Whether `root` (absolute, real) may never be an extra root: `/`, system folders (inside or containing
+ * one, except /var/tmp and /run/media/$USER), and other users' homes. Same rule as the host. */
+export function forbiddenRoot(root: string, home: string, user: string): boolean {
+  const r = resolvePath(root);
+  if (r === "/") return true;
+  if (inside(r, "/var/tmp") || inside(r, `/run/media/${user}`)) return false;
+  if (FORBIDDEN.some((f) => inside(r, f) || inside(f, r))) return true;
+  if (inside(r, home)) return false;
+  return ["/home", "/Users"].some((h) => inside(r, h) || inside(h, r));
+}
+
+const realOr = (p: string): string | undefined => {
+  try {
+    return realpathSync(p);
+  } catch {
+    return undefined;
+  }
+};
+
+/** Defaults + `allow` − `deny`, canonical, existing, never forbidden. */
+export function resolveSafeRoots(config: { allow?: unknown; deny?: unknown }, home: string, user: string): string[] {
+  const list = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []);
+  const expand = (p: string) => p.replace("$USER", user);
+  const deny = list(config.deny).map((d) => realOr(expand(d)) ?? resolvePath(expand(d)));
+  const out: string[] = [];
+  for (const raw of [...DEFAULT_SAFE_ROOTS, ...list(config.allow)]) {
+    const p = expand(raw);
+    if (!p.startsWith("/")) continue;
+    const real = realOr(p);
+    if (!real || kindOf(real) !== "dir" || forbiddenRoot(real, home, user)) continue;
+    if (deny.some((d) => inside(real, d)) || out.includes(real)) continue;
+    out.push(real);
+  }
+  return out;
+}
+
+const hostConfigPath = () => join(process.env.UNIPI_HOST_DIR || join(homedir(), ".unipi", "app-host"), "config.json");
+let rootsCache: { at: number; roots: string[]; deny: string[] } | undefined;
+
+/** The host's extra roots + carve-outs, from its `config.json` (re-read at most every 5 s; unreadable = defaults). */
+export function hostSafeRoots(now = Date.now(), home = homedir()): { roots: string[]; deny: string[] } {
+  if (rootsCache && now - rootsCache.at < 5000) return rootsCache;
+  let fs: { allow?: unknown; deny?: unknown } = {};
+  try {
+    const parsed = JSON.parse(readFileSync(hostConfigPath(), "utf8")) as { fs?: { allow?: unknown; deny?: unknown } };
+    if (parsed && typeof parsed.fs === "object" && parsed.fs) fs = parsed.fs;
+  } catch {
+    // missing/unreadable: defaults
+  }
+  let user = process.env.USER || process.env.LOGNAME || "";
+  if (!user) {
+    try {
+      user = userInfo().username;
+    } catch {
+      user = "";
+    }
+  }
+  const deny = (Array.isArray(fs.deny) ? fs.deny : []).filter((d): d is string => typeof d === "string").map((d) => realOr(d) ?? resolvePath(d));
+  rootsCache = { at: now, roots: resolveSafeRoots(fs, home, user), deny };
+  return rootsCache;
+}
+
+/** Test hook. */
+export function clearSafeRoots(): void {
+  rootsCache = undefined;
+}
+
+/** Whether `abs` really (after symlinks) lies in an extra root and outside every carve-out. */
+function inExtraRoot(abs: string, extra: { roots: readonly string[]; deny: readonly string[] }): boolean {
+  if (!extra.roots.length) return false;
+  const real = realOr(abs);
+  if (!real) {
+    // Not there (answers `missing` anyway); judge the spelling so we never say more than that.
+    return false;
+  }
+  return extra.roots.some((r) => inside(real, r)) && !extra.deny.some((d) => inside(real, d));
+}
 
 // ---- cwd tree index (suffix lookup) ----------------------------------------
 
@@ -172,15 +260,21 @@ function suffixMatch(idx: TreeIndex, rel: string): { rel: string; kind: PathKind
 }
 
 /** Answers one `paths_stat` request (see module doc). Never rejects. The suffix lookup is skipped
- * when the cwd is $HOME or `/` (a tree that size says nothing useful about a bare `index.ts`). */
-export async function statPaths(paths: readonly string[], cwd: string, home = homedir()): Promise<PathStat[]> {
+ * when the cwd is $HOME or `/` (a tree that size says nothing useful about a bare `index.ts`).
+ * `extra` defaults to the host's extra safe roots (UNI-220). */
+export async function statPaths(
+  paths: readonly string[],
+  cwd: string,
+  home = homedir(),
+  extra: { roots: readonly string[]; deny: readonly string[] } = hostSafeRoots(Date.now(), home),
+): Promise<PathStat[]> {
   const out: PathStat[] = [];
   const indexable = resolvePath(cwd) !== resolvePath(home) && resolvePath(cwd) !== "/";
   let idx: TreeIndex | undefined;
   for (const raw of paths.slice(0, PATHS_STAT_MAX)) {
     const path = String(raw).slice(0, PATH_MAX_CHARS);
     const resolved = resolveAgainst(path, cwd, home);
-    if (!inside(resolved, cwd) && !inside(resolved, home)) {
+    if (!inside(resolved, cwd) && !inside(resolved, home) && !inExtraRoot(resolved, extra)) {
       out.push({ path, resolved, kind: "missing" });
       continue;
     }
