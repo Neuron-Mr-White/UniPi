@@ -49,13 +49,21 @@ function depsWith(run: (args: string[], options?: RunCliOptions) => Promise<unkn
 
 describe("captureToBacklog", () => {
   let workspace: string;
+  // Hermetic HOME: settings resolve ~/.unipi/config at call time, and a real
+  // user's GLOBAL kanboard slug would make "not onboarded" look onboarded.
+  let home: string;
+  const realHome = process.env.HOME;
 
   beforeEach(() => {
+    home = mkdtempSync(join(tmpdir(), "kb-capture-home-"));
+    process.env.HOME = home;
     workspace = mkdtempSync(join(tmpdir(), "kb-capture-ws-"));
   });
 
   afterEach(() => {
+    process.env.HOME = realHome;
     rmSync(workspace, { recursive: true, force: true });
+    rmSync(home, { recursive: true, force: true });
   });
 
   const onboard = (): void => {
