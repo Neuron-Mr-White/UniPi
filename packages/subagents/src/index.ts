@@ -33,7 +33,7 @@ import { setSharedSubagentManager, clearSharedSubagentManager } from "./manager-
 import { loadProfiles, type AgentProfile } from "./profiles.js";
 import { buildTranscript, itemsFromEvents } from "./transcript.js";
 import {
-  SubagentDock, elapsed, plural, profileLabel, runningPreview, statusColor, statusGlyph, statLine, tailLines, STATUS_LABEL, type ThemeLike,
+  SubagentDock, elapsed, plural, profileLabel, statusColor, statusGlyph, statLine, tailLines, STATUS_LABEL, type ThemeLike,
 } from "./ui.js";
 import { AGENTS_COMMAND, registerAgentsCommand } from "./agents.js";
 import {
@@ -349,8 +349,7 @@ export default function subagents(pi: ExtensionAPI, deps?: { manager?: SubagentM
   }
 
   // One bottom pane with the background tasks (UNI-126): the Subagents tab.
-  // The tray owns ↓, ←/→ and the strip under the editor (with the per-agent
-  // stat lines this module's own strip used to draw).
+  // The tray owns ↓ and ←/→; nothing is drawn while it is closed.
   registerWorkTrayTab(pi, {
     id: "subagents",
     label: "Subagents",
@@ -368,7 +367,6 @@ export default function subagents(pi: ExtensionAPI, deps?: { manager?: SubagentM
       foreground: foregroundAgent,
       cancel: cancelAgent,
     }, close, initialId),
-    previewLines: (width, theme) => runningPreview(getSharedSubagents(), width, theme, (rec) => ({ toolCalls: manager.toolCalls(rec.id), usage: manager.usage(rec.id) })),
   });
 
   async function openDock(ctx: ExtensionContext, initialId?: string): Promise<void> {

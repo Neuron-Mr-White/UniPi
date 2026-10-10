@@ -5,7 +5,6 @@ import {
   WorkTray,
   pickInitialTab,
   renderTabStrip,
-  renderTrayStrip,
   registerWorkTrayTab,
   openWorkTray,
   isWorkTrayOpen,
@@ -114,29 +113,6 @@ describe("renderTabStrip", () => {
   });
   test("no running → no running suffix", () => {
     assert.match(strip(renderTabStrip(theme, [tab("bg", 0, 2)], 0, 120)), /Background tasks \(2\)/);
-  });
-});
-
-describe("renderTrayStrip", () => {
-  test("nothing → no line; open tray → no line", () => {
-    assert.deepEqual(renderTrayStrip(theme, [tab("bg", 0, 0), tab("subagents", 1, 0)], 120), []);
-    assert.deepEqual(renderTrayStrip(theme, [tab("bg", 0, 2)], 120, true), []);
-  });
-  test("one line naming every non-empty tab + previews; one column short of the width", () => {
-    const sub = tab("subagents", 1, 3, 2, { previewLines: () => ["  ⠋ Explore · 3s", "  ⠋ General · 9s"] });
-    const lines = renderTrayStrip(theme, [tab("bg", 0, 0), sub], 120).map(strip);
-    assert.deepEqual(lines, ["◆ Subagents 3 (2 running) · ↓ open", "  ⠋ Explore · 3s", "  ⠋ General · 9s"]);
-    const both = renderTrayStrip(theme, [tab("bg", 0, 2, 1), sub], 120).map(strip);
-    assert.equal(both[0], "◆ Background tasks 2 (1 running) · Subagents 3 (2 running) · ↓ open");
-    for (const w of [10, 40, 80]) for (const l of renderTrayStrip(theme, [tab("bg", 0, 2, 1), sub], w)) assert.ok(visibleWidth(l) < w);
-  });
-  test("narrow: short labels before truncation", () => {
-    const line = strip(renderTrayStrip(theme, [tab("bg", 0, 19, 19), tab("subagents", 1, 5, 1)], 50)[0]!);
-    assert.equal(line, "◆ Bg tasks 19 (19) · Subagents 5 (1) · ↓ open");
-  });
-  test("a throwing preview never hides the strip", () => {
-    const bad = tab("subagents", 1, 1, 1, { previewLines: () => { throw new Error("boom"); } });
-    assert.equal(renderTrayStrip(theme, [bad], 80).length, 1);
   });
 });
 
@@ -277,15 +253,21 @@ describe("↓ handler + registration", () => {
     await first;
   });
 
-  test("session_start installs the strip widget + input hook once per api; no UI → nothing", () => {
+  test("session_start installs a zero-line widget (TUI ref only — nothing drawn while closed, even with running work) + input hook once per api; no UI → nothing", () => {
     const pi = fakePi();
-    registerWorkTrayTab(pi as never, tab("bg", 0, 1));
-    registerWorkTrayTab(pi as never, tab("subagents", 1, 1));
+    registerWorkTrayTab(pi as never, tab("bg", 0, 3, 2));
+    registerWorkTrayTab(pi as never, tab("subagents", 1, 2, 1));
     const widgets: string[] = [];
+    const rendered: string[][] = [];
     let inputs = 0;
     const start = pi.handlers.get("session_start")!;
-    start({}, { hasUI: true, ui: { setWidget: (k: string) => widgets.push(k), onTerminalInput: () => (inputs++, () => {}) } });
+    const setWidget = (k: string, f: (tui: unknown, th: unknown) => { render(w: number): string[] }) => {
+      widgets.push(k);
+      rendered.push(f({ requestRender() {} }, theme).render(120));
+    };
+    start({}, { hasUI: true, ui: { setWidget, onTerminalInput: () => (inputs++, () => {}) } });
     assert.deepEqual(widgets, ["work-tray-strip"]);
+    assert.deepEqual(rendered, [[]], "no strip / spinner lines below the editor");
     assert.equal(inputs, 1);
     start({}, { hasUI: false, ui: {} });
     assert.equal(inputs, 1);

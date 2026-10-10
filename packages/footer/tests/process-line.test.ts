@@ -161,6 +161,8 @@ describe("process-line", () => {
       assert.equal(line, " <a>⠸</a> <a>Working…</a><m> · bg: npm test · 1m 12s</m>");
       const short = renderWaitingLine(80, () => true, { elapsedMs: 4_200 });
       assert.equal(short, " ⠋ Working… · bg: npm test · 4s");
+      const hinted = renderWaitingLine(80, () => true, { elapsedMs: 4_200, hint: "↓ view" });
+      assert.equal(hinted, " ⠋ Working… · bg: npm test · 4s · ↓ view", "quiet tray hint at the end");
     });
 
     it("undefined at width <= 1", () => {

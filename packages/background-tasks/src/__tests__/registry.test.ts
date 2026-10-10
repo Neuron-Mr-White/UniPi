@@ -519,6 +519,44 @@ void describe('BackgroundTaskRegistry', () => {
     }
   });
 
+  void it('killTask sends SIGKILL at once (work tray x kill); dismissTasks forgets only finished tasks', async () => {
+    let childRef: FakeChild | undefined;
+    const killCalls: Array<{ pid: number; signal?: NodeJS.Signals | number }> = [];
+    const h = await createHarness({
+      platform: 'darwin',
+      killProcess: (pid, signal) => {
+        const call: { pid: number; signal?: NodeJS.Signals | number } = { pid };
+        if (signal !== undefined) call.signal = signal;
+        killCalls.push(call);
+        queueMicrotask(() => {
+          childRef?.close(null, typeof signal === 'string' ? signal : null);
+        });
+        return true;
+      },
+      childFactory: (pid) => {
+        childRef = new FakeChild(pid);
+        return childRef;
+      },
+    });
+    try {
+      const { task: killed, child } = await startFakeTask(h);
+      await h.registry.killTask(killed);
+      assert.deepEqual(killCalls, [{ pid: -child.pid, signal: 'SIGKILL' }]);
+      assert.equal(killed.status, 'killed');
+      await assert.rejects(() => h.registry.killTask(killed), /not running/);
+      const { task: running } = await startFakeTask(h);
+      const before = h.changes;
+      assert.equal(h.registry.dismissTasks([running.id]), 0, 'running tasks are never dismissed');
+      assert.equal(h.registry.dismissTasks(), 1);
+      assert.deepEqual(h.registry.allTasks().map((t) => t.id), [running.id]);
+      assert.ok(h.changes > before, 'dismiss signals a change');
+      assert.equal(h.registry.dismissTasks(), 0);
+      await h.registry.stopTask(running, 'user');
+    } finally {
+      await cleanup(h.root);
+    }
+  });
+
   void it('falls back to child.kill when process-group kill fails and reports when both fail', async () => {
     const h = await createHarness({
       platform: 'linux',

@@ -19,7 +19,17 @@ import {
   getPackageVersion,
   findPackageRoot,
   pendingWorkLabel,
+  workTrayItemCount,
 } from "@pi-unipi/core";
+
+/** The work tray has something to open with ↓ (hint on the Working line). */
+function trayHasItems(): boolean {
+  try {
+    return workTrayItemCount() > 0;
+  } catch {
+    return false;
+  }
+}
 import { getFooterRegistry, type FooterRegistry } from "./registry/index.js";
 import { loadFooterSettings, saveFooterSettings } from "./config.js";
 import { registerCommands } from "./commands.js";
@@ -258,7 +268,8 @@ function setupFooterUI(pi: ExtensionAPI, ctx: ExtensionContext, state: FooterSta
         // handoff) show a working line shaped like pi's own ("⠋ Working… ·
         // bg: npm test · 12s") — the pane must not read as finished. It is
         // a status, not part of the bg dots, so it ignores processLine/
-        // strip-hiding settings.
+        // strip-hiding settings. It is the only bg/subagent line outside
+        // the ↓ work tray (the tray draws nothing while closed).
         const ctx = state.piContext as { isIdle?: () => boolean } | undefined;
         const now = Date.now();
         const frame = Math.floor(now / 80);
@@ -275,6 +286,7 @@ function setupFooterUI(pi: ExtensionAPI, ctx: ExtensionContext, state: FooterSta
               elapsedMs: waitingSince !== undefined ? now - waitingSince : 0,
               spinner: (t) => fg("accent", t),
               muted: (t) => fg("muted", t),
+              ...(trayHasItems() ? { hint: "↓ view" } : {}),
             })
           : undefined;
         if (waiting !== undefined) {

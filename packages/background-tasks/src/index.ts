@@ -12,6 +12,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
   isChildProcess,
+  type KitTheme,
   openWorkTray,
   registerWaitSource,
   registerWorkTrayTab,
@@ -28,7 +29,7 @@ import {
 import { registerToolsAndCommands } from "./tools.js";
 import { setSharedTaskRegistry, clearSharedTaskRegistry, notifyTaskRegistryChange } from "./registry-shared.js";
 import { taskDisplayName, type BgTask, type StartTaskOptions } from "./types.js";
-import { BackgroundTasksManager, type TaskManagerTheme } from "./task-manager.js";
+import { BackgroundTasksPane } from "./tray-pane.js";
 
 // Direct synchronous access for sibling extensions (footer process one-liner).
 export { getSharedTaskRegistry } from "./registry-shared.js";
@@ -116,14 +117,17 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
     return registry.startTask(ctx, command, opts);
   }
 
-  function createPane(ctx: ExtensionContext | undefined, close: () => void, tui: { requestRender(): void }, theme: TaskManagerTheme, initialTaskId?: string): BackgroundTasksManager {
-    return new BackgroundTasksManager(tui, theme, () => close(), {
-      getTasks: () => registry.allTasks(),
-      stopTask: async (task) => {
+  function createPane(ctx: ExtensionContext | undefined, close: () => void, tui: { requestRender(): void }, theme: KitTheme, initialTaskId?: string): BackgroundTasksPane {
+    return new BackgroundTasksPane(tui, theme, {
+      tasks: () => registry.allTasks(),
+      stop: async (task) => {
         await registry.stopTask(registry.resolveTask(task.id), "user");
       },
-      stopAllRunning: async () => registry.stopAllRunning("user"),
-      rerunTask: async (task) => {
+      kill: async (task) => {
+        await registry.killTask(registry.resolveTask(task.id), "user");
+      },
+      stopAll: async () => registry.stopAllRunning("user"),
+      rerun: async (task) => {
         const target = ctx ?? currentCtx;
         if (!target) throw new Error("No active session to rerun in.");
         const rerunOptions: StartTaskOptions = {
@@ -136,18 +140,15 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
         if (task.timeoutSeconds !== undefined) rerunOptions.timeoutSeconds = task.timeoutSeconds;
         return startTask(target, task.command, rerunOptions);
       },
+      dismiss: (ids) => {
+        const n = registry.dismissTasks(ids);
+        for (const id of ids ?? []) seenTaskIds.add(id);
+        return n;
+      },
       showOutputPath: (task) => {
         (ctx ?? currentCtx)?.ui.notify(`Output path for ${taskDisplayName(task)} (${task.id}):\n${task.outputPath}`, "info");
       },
-      markSeen: (taskId: string) => {
-        seenTaskIds.add(taskId);
-      },
-      markFinishedSeen: (taskIds: string[]) => {
-        for (const taskId of taskIds) seenTaskIds.add(taskId);
-      },
-      isSeen: (taskId: string) => seenTaskIds.has(taskId),
-      ...(initialTaskId ? { initialTaskId } : {}),
-    });
+    }, () => close(), initialTaskId);
   }
 
   // One bottom pane with the subagents (UNI-126): this is its first tab.

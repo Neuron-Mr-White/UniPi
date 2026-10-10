@@ -10,7 +10,7 @@ process.env.HOME = HOME;
 
 import { SubagentManager, recordStatusFor, getSharedSubagents } from "../manager.js";
 import { buildTranscript, itemsFromSessionFile, itemsFromEvents } from "../transcript.js";
-import { SubagentDock, runningPreview, renderItems, profileLabel, elapsed } from "../ui.js";
+import { SubagentDock, renderItems, profileLabel, elapsed } from "../ui.js";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { agentMarkdown, validateName, agentFile } from "../agents.js";
 import { loadProfiles } from "../profiles.js";
@@ -185,18 +185,6 @@ const rec = (over: Record<string, unknown> = {}) => ({
   id: "abcd1234", title: "Read config", profile: "subagent_explore", model: "ds/deepseek-flash", status: "completed",
   background: false, startedAt: Date.now() - 7000, endedAt: Date.now(), toolCalls: 1, lastActivity: 0, sessionFile: "/nope", depth: 1, ...over,
 }) as never;
-
-test("tray preview: one stat line per running agent (max 3, then +N more), nothing when idle", () => {
-  const stats = () => ({ toolCalls: 2 });
-  assert.deepEqual(runningPreview([rec()], 120, theme, stats), []);
-  const one = runningPreview([rec(), rec({ status: "running" })], 120, theme, stats);
-  assert.equal(one.length, 1);
-  assert.match(one[0]!, /Explore · ds\/deepseek-flash · \d+s · 2 tool calls$/);
-  const many = runningPreview(Array.from({ length: 5 }, () => rec({ status: "running" })), 40, theme, stats);
-  assert.equal(many.length, 4);
-  assert.equal(many[3], "  … +2 more");
-  for (const l of many) assert.ok(visibleWidth(l) <= 40);
-});
 
 test("foreground card: one head line, glyph settles in place (spinner → ✓), no tinted box", () => {
   const context = { state: {} as never, invalidate() {} };

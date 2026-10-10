@@ -6,6 +6,8 @@
  *   ── ▌Background tasks (2 · 1 running)▐  Subagents (3) ───── ←→ tabs · esc close
  *   <the active tab's pane: the bg task list/logs, or the subagent list/transcript>
  *
+ * Nothing is drawn while the tray is closed (no strip, no spinners).
+ *
  * Owners register a tab (`registerWorkTrayTab`) and supply the pane; this
  * module owns the tab strip, ←/→ switching, the ↓ key and the open/close
  * lifecycle, so there is exactly one place deciding when ↓ is stolen from
@@ -54,13 +56,15 @@ export interface WorkTrayTab {
   order: number;
   counts(): WorkTrayCounts;
   createPane(ctx: WorkTrayPaneContext): WorkTrayPane;
-  /** Live lines under the strip while the tray is closed (e.g. one stat
-   *  line per running subagent). */
-  previewLines?(width: number, theme: TrayTheme): string[];
 }
 
 export type TrayTheme = Pick<Theme, "fg" | "bold">;
 
+/** A zero-line widget: only there to learn the TUI (for the ↓ focus check).
+ *  The tray draws NOTHING while closed — no strip, no spinners (the user
+ *  found the always-on "◆ Background tasks … · ↓ open" + per-agent spinner
+ *  lines messy); the footer's single "Working… · ↓ open" line is the only
+ *  hint that wake-capable work is pending. */
 const STRIP_KEY = "work-tray-strip";
 export const TRAY_HINT = "←→ tabs · esc close";
 
@@ -246,43 +250,6 @@ export class WorkTray implements Component {
   }
 }
 
-// ── strip (below the editor while the tray is closed) ──────────────────────────
-
-/** `◆ Background tasks 1 running · Subagents 2 (1 running) · ↓ open` plus
- *  each tab's preview lines; [] when nothing exists or the tray is open. */
-export function renderTrayStrip(theme: TrayTheme, list: readonly WorkTrayTab[], width: number, open = false): string[] {
-  if (open || width <= 1) return [];
-  // One column short of the terminal: exactly-full-width lines desync
-  // wrapping terminals (footer issue #31).
-  const w = Math.max(1, width - 1);
-  const build = (short: boolean): string | undefined => {
-    const parts: string[] = [];
-    let running = 0;
-    for (const tab of list) {
-      const c = safeCounts(tab);
-      if (c.total === 0) continue;
-      running += c.running;
-      const label = short ? (tab.shortLabel ?? tab.label) : tab.label;
-      const run = c.running > 0 ? ` ${theme.fg("accent", short ? `(${String(c.running)})` : `(${String(c.running)} running)`)}` : "";
-      parts.push(`${theme.fg("muted", `${label} ${String(c.total)}`)}${run}`);
-    }
-    if (parts.length === 0) return undefined;
-    return `${theme.fg(running > 0 ? "accent" : "muted", "◆")} ${parts.join(theme.fg("dim", " · "))}${theme.fg("dim", " · ↓ open")}`;
-  };
-  const full = build(false);
-  if (full === undefined) return [];
-  const head = visibleWidth(full) <= w ? full : (build(true) ?? full);
-  const out = [truncateToWidth(head, w)];
-  for (const tab of list) {
-    try {
-      for (const l of tab.previewLines?.(w, theme) ?? []) out.push(truncateToWidth(l, w));
-    } catch {
-      /* a broken preview must not hide the strip */
-    }
-  }
-  return out;
-}
-
 // ── registration + lifecycle ────────────────────────────────────────────────
 
 /** True while the tray is open. */
@@ -323,21 +290,10 @@ function ensureWorkTray(pi: ExtensionAPI): void {
       unsubInput?.();
       unsubInput = undefined;
       if (!ctx.hasUI) return;
-      // The strip widget (also the TUI ref for the ↓ focus check). Renders
-      // nothing when there is no work, so idle sessions show no line.
-      ctx.ui.setWidget(STRIP_KEY, (tui, theme) => {
+      // Zero-line widget: only captures the TUI ref for the ↓ focus check.
+      ctx.ui.setWidget(STRIP_KEY, (tui) => {
         tuiRef = tui;
-        let unsub: () => void = () => {};
-        try {
-          unsub = subscribeWorkChanges(() => tui.requestRender());
-        } catch {
-          /* static strip is still correct on the next render */
-        }
-        return {
-          render: (width: number) => renderTrayStrip(theme, sortedTabs(), width, openTray !== undefined),
-          invalidate() {},
-          dispose: () => unsub(),
-        };
+        return { render: () => [], invalidate() {} };
       }, { placement: "belowEditor" });
       unsubInput = ctx.ui.onTerminalInput(onTerminalInput);
     } catch {

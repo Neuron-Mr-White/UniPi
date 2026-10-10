@@ -44,7 +44,7 @@ describe("footer settings defaults", () => {
     assert.deepEqual(s, DEFAULT_FOOTER_SETTINGS);
     assert.equal(s.enabled, true);
     assert.equal(s.rainbow, "always");
-    assert.equal(s.processLine, true);
+    assert.equal(s.processLine, false, "the extra bg line is opt-in; the ↓ work tray holds bg tasks");
     for (const key of ["turns", "time", "speed", "tokens", "cost", "compactions", "cache"] as const) {
       assert.equal(s.strip[key], true, `strip.${key} defaults on`);
     }
@@ -108,13 +108,13 @@ describe("settings cache", () => {
 
   it("picks up external file edits via the mtime re-check", async () => {
     const { loadFooterSettings, invalidateFooterSettingsCache } = await import("../src/config.ts");
-    assert.equal(loadFooterSettings().processLine, true);
+    assert.equal(loadFooterSettings().processLine, false);
     invalidateFooterSettingsCache();
     // Touch the file with new content and a newer mtime.
-    writeConfig({ processLine: false });
+    writeConfig({ processLine: true });
     const cfg = path.join(configDir(), "config.json");
     const future = new Date(Date.now() + 2000);
     fs.utimesSync(cfg, future, future);
-    assert.equal(loadFooterSettings().processLine, false);
+    assert.equal(loadFooterSettings().processLine, true);
   });
 });

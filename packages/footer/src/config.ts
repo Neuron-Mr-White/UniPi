@@ -32,7 +32,10 @@ export const DEFAULT_FOOTER_SETTINGS: FooterSettings = {
   iconStyle: "nerd",
   colorMode: "auto",
   rainbow: "always",
-  processLine: true,
+  // Off by default: bg tasks + subagents live in the ↓ work tray; the only
+  // line above the input is the UNI-221 "Working…" one while wake-capable
+  // work is pending.
+  processLine: false,
   strip: {
     turns: true,
     time: true,
@@ -118,7 +121,7 @@ registerSettings({
           description: "Which frame parts get the animated rainbow.",
           options: ["always", "brand-only", "off"],
         },
-        { key: "processLine", type: "boolean", label: "Background tasks line", description: "The one-liner above the input counting background tasks." },
+        { key: "processLine", type: "boolean", label: "Background tasks line", description: "Extra one-liner above the input counting background tasks by status (off by default — they live in the ↓ work tray)." },
         { key: "strip.turns", type: "boolean", label: "Strip: turns", description: "Turn and step counters in the stats strip." },
         { key: "strip.time", type: "boolean", label: "Strip: time", description: "Model time and tool time in the stats strip." },
         { key: "strip.speed", type: "boolean", label: "Strip: speed", description: "Average time to first token and tokens per second." },

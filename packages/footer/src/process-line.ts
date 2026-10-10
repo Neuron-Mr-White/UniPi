@@ -90,6 +90,8 @@ export interface WorkingLineStyle {
   frame?: number;
   /** Elapsed ms since the pending work was first seen idle. */
   elapsedMs?: number;
+  /** Trailing quiet key hint (e.g. "↓ view" when the work tray has items). */
+  hint?: string;
 }
 
 function formatElapsed(ms: number): string {
@@ -107,6 +109,9 @@ function formatElapsed(ms: number): string {
  * 12s") read straight off the arbiter's wait sources via core's
  * `pendingWorkLabel()` (whichever package registered the wait source is the
  * source of truth).
+ *
+ * It is the ONLY bg/subagent line outside the ↓ work tray (the tray draws
+ * nothing while closed; the status-dot one-liner is opt-in `processLine`).
  *
  * Returns `undefined` when pi is busy (pi shows its own working line) or
  * nothing is pending (callers show their normal idle state).
@@ -126,6 +131,7 @@ export function renderWaitingLine(width: number, isIdle: () => boolean, style: W
   const muted = style.muted ?? ((t: string) => t);
   const frame = WORKING_FRAMES[Math.abs(style.frame ?? 0) % WORKING_FRAMES.length] ?? WORKING_FRAMES[0];
   const elapsed = style.elapsedMs !== undefined ? ` · ${formatElapsed(style.elapsedMs)}` : "";
-  const line = ` ${spinner(frame)} ${spinner(WORKING_TITLE)}${muted(` · ${label}${elapsed}`)}`;
+  const hint = style.hint ? ` · ${style.hint}` : "";
+  const line = ` ${spinner(frame)} ${spinner(WORKING_TITLE)}${muted(` · ${label}${elapsed}${hint}`)}`;
   return truncateToWidth(line, Math.max(1, width - 1));
 }

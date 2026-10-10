@@ -82,8 +82,8 @@ test("registers the Background tasks tab; Shift+↓ and /unipi:bg-tasks open the
   assert.equal(c.opened.length, 1);
   assert.equal(c.opened[0]!.activeTabId(), "bg");
   assert.match(c.opened[0]!.render(100).join("\n"), /Background tasks \(0\)/);
-  assert.match(c.opened[0]!.render(100).join("\n"), /No background tasks in this session/);
-  c.opened[0]!.handleInput("x"); // pane close → tray closes
+  assert.match(c.opened[0]!.render(100).join("\n"), /No background tasks\./);
+  c.opened[0]!.handleInput("q"); // pane close → tray closes (x is kill now)
   await viaShortcut;
 
   const viaCommand = commands.get("unipi:bg-tasks")!.handler("", c.ctx) as Promise<void>;

@@ -63,7 +63,7 @@ Open `/unipi:settings` → **Footer**. The file is `~/.unipi/config/footer/confi
 | `iconStyle` | `nerd` | Icon set: `nerd` (needs a Nerd Font), `emoji` or `text`. |
 | `colorMode` | `auto` | `auto`, `truecolor`, `256` or `none`. The legacy value `mono` loads as `none`. |
 | `rainbow` | `always` | `always` animates the brand (and the whole frame at `xhigh`/`max` thinking); `brand-only` never animates the whole frame; `off` disables the animation. |
-| `processLine` | `true` | Shows the background-task line above the input. |
+| `processLine` | `false` | Shows an extra line above the input that counts background tasks by status. Background tasks live in the ↓ work tray. |
 | `strip.turns` | `true` | Turn and step counters. |
 | `strip.time` | `true` | Model time and tool time. |
 | `strip.speed` | `true` | Average TTFT and tokens per second. |

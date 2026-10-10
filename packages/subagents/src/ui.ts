@@ -1,9 +1,8 @@
 /**
  * @pi-unipi/subagents — TUI: strip, dock (list + transcript view), live tail.
  *
- * Devin layout, UniPi styling. The strip + ↓ + tab strip are the shared
+ * Devin layout, UniPi styling. ↓ + the tab strip are the shared
  * work tray's (core/src/work/tray.ts, UNI-126); this module supplies:
- *   preview (under the strip) one stat line per running agent
  *   dock (Subagents tab)  rows `❭ DONE Explore title ····· 7s · 1 tool · model`
  *                          keys `↑↓ navigate · ↵ view · f foreground · x cancel · esc close`
  *   view                  `── ◔ Explore › title ── 2m49s · 8 tools ──`, model line, task, live steps
@@ -11,8 +10,11 @@
 
 import type { Theme, ThemeColor } from "@earendil-works/pi-coding-agent";
 import { getMarkdownTheme } from "@earendil-works/pi-coding-agent";
-import { Key, Markdown, matchesKey, truncateToWidth, visibleWidth, wrapTextWithAnsi, type Component, type TUI } from "@earendil-works/pi-tui";
-import { badge, formatTokens, leader, settledGlyph, spinner, SPINNER_MS, STATE_BADGE, STATE_COLOR, stateGlyph } from "@pi-unipi/core";
+import { Key, Markdown, matchesKey, truncateToWidth, wrapTextWithAnsi, type Component, type TUI } from "@earendil-works/pi-tui";
+import {
+  badge, formatTokens, groupRows, renderTrayDetail, renderTrayList, settledGlyph, spinner, SPINNER_MS, STATE_BADGE, STATE_COLOR, stateGlyph,
+  trayElapsed, trayPage, trayPlural, TrayListState, TrayScroll, type TrayRow,
+} from "@pi-unipi/core";
 import type { SidekickUsage } from "@pi-unipi/core/child-agent.js";
 import type { SubagentRecord, SubagentStatus } from "./manager.js";
 import type { TranscriptItem } from "./transcript.js";
@@ -21,17 +23,9 @@ export type ThemeLike = Pick<Theme, "fg" | "bold">;
 
 const SPIN_MS = SPINNER_MS;
 
-export function elapsed(ms: number): string {
-  const s = Math.max(0, Math.floor(ms / 1000));
-  if (s < 60) return `${String(s)}s`;
-  const m = Math.floor(s / 60);
-  if (m < 60) return `${String(m)}m${String(s % 60).padStart(2, "0")}s`;
-  return `${String(Math.floor(m / 60))}h${String(m % 60).padStart(2, "0")}m`;
-}
-
-export function plural(n: number, word: string): string {
-  return `${String(n)} ${word}${n === 1 ? "" : "s"}`;
-}
+/** Shared with the Background tasks tab (core pane-kit). */
+export const elapsed = trayElapsed;
+export const plural = trayPlural;
 
 /** subagent_explore → Explore; custom ids keep their name. */
 export function profileLabel(profile: string): string {
@@ -88,30 +82,6 @@ export function statLine(
 
 function spinFrame(): number {
   return Date.now();
-}
-
-/** Live stats accessor for the per-agent preview lines. */
-export interface AgentStats {
-  toolCalls: number;
-  usage?: SidekickUsage;
-}
-
-/** Work-tray preview under the strip (was SubagentStrip's body): one stat
- *  line per running agent, at most 3, then `… +N more`. */
-export function runningPreview(
-  records: readonly SubagentRecord[],
-  width: number,
-  theme: ThemeLike,
-  stats: (rec: SubagentRecord) => AgentStats,
-): string[] {
-  const running = records.filter((r) => r.status === "running");
-  const lines: string[] = [];
-  for (const rec of running.slice(0, 3)) {
-    const s = stats(rec);
-    lines.push(truncateToWidth(`  ${spinner(theme, undefined)} ${theme.fg("dim", statLine(rec, s.toolCalls, s.usage))}`, width));
-  }
-  if (running.length > 3) lines.push(truncateToWidth(`  ${theme.fg("dim", `… +${String(running.length - 3)} more`)}`, width));
-  return lines;
 }
 
 // ── transcript rendering ────────────────────────────────────────────────────
@@ -177,23 +147,22 @@ export interface DockActions {
 
 const LIST_HINT = "↑↓ navigate · ↵ view · f foreground · x cancel · ←→ tabs · esc close";
 const VIEW_HINT = "↑↓ scroll · g/G top/end · o output · f foreground · x cancel · ←/esc back";
-const MAX_LIST_ROWS = 10;
-const MIN_TITLE = 24;
 
-function rule(theme: ThemeLike, left: string, right: string, width: number): string {
-  const l = `── ${left} `;
-  const r = right ? ` ${right} ──` : "";
-  const fill = Math.max(2, width - visibleWidth(l) - visibleWidth(r));
-  return truncateToWidth(`${theme.fg("borderMuted", "── ")}${left} ${theme.fg("borderMuted", "─".repeat(fill))}${r ? theme.fg("dim", r) : ""}`, width);
+/** One list row of the Subagents tab (shared layout: core pane-kit). */
+export function subagentRow(rec: SubagentRecord, toolCalls: number, usage: SidekickUsage | undefined, now = Date.now()): TrayRow {
+  const tags = [elapsed(durationOf(rec, now)), plural(toolCalls, "tool")];
+  if (rec.status === "running" && rec.background) tags.push("bg");
+  tags.push(rec.model);
+  const tok = usageTail(usage);
+  if (tok) tags.push(tok.slice(3));
+  return { id: rec.id, state: rec.status, kind: profileLabel(rec.profile), title: rec.title, tags };
 }
 
 /** The work tray's Subagents tab (replaces the editor like /unipi:btw). */
 export class SubagentDock implements Component {
-  private selected = 0;
-  private listTop = 0;
+  private readonly list = new TrayListState();
   private viewId: string | undefined;
-  private scroll = 0;
-  private follow = true;
+  private readonly scroll = new TrayScroll();
   private fullOutput = false;
   private flash: string | undefined;
   private readonly unsubscribe: () => void;
@@ -206,9 +175,7 @@ export class SubagentDock implements Component {
     private readonly done: () => void,
     initialId?: string,
   ) {
-    const recs = this.ordered();
-    const first = initialId !== undefined ? recs.findIndex((r) => r.id === initialId) : recs.findIndex((r) => r.status === "running");
-    this.selected = Math.max(0, first);
+    this.list.selectId(this.rows(), initialId);
     this.unsubscribe = actions.subscribe(() => this.tui.requestRender());
     this.timer = setInterval(() => {
       if (this.actions.records().some((r) => r.status === "running")) this.tui.requestRender();
@@ -216,15 +183,19 @@ export class SubagentDock implements Component {
     this.timer.unref?.();
   }
 
-  /** Newest first — what you just started is at the top. */
+  /** Running first, then recent; newest first within each. */
   private ordered(): SubagentRecord[] {
-    return [...this.actions.records()].sort((a, b) => b.startedAt - a.startedAt);
+    return groupRows([...this.actions.records()].sort((a, b) => b.startedAt - a.startedAt).map((r) => ({ r, state: r.status }))).map((x) => x.r);
+  }
+
+  private rows(now = Date.now()): TrayRow[] {
+    return this.ordered().map((rec) => subagentRow(rec, this.actions.toolCalls(rec), this.actions.usage?.(rec), now));
   }
 
   private current(): SubagentRecord | undefined {
     const recs = this.ordered();
     if (this.viewId !== undefined) return recs.find((r) => r.id === this.viewId);
-    return recs[Math.min(this.selected, recs.length - 1)];
+    return this.list.current(recs);
   }
 
   invalidate(): void {}
@@ -246,42 +217,9 @@ export class SubagentDock implements Component {
   }
 
   private renderList(w: number): string[] {
-    const t = this.theme;
-    const recs = this.ordered();
     // The tray's tab strip above already shows "Subagents (N · k running)".
-    const out: string[] = [];
-    if (recs.length === 0) out.push(t.fg("dim", "  No subagents in this session yet."));
-    this.selected = Math.max(0, Math.min(this.selected, recs.length - 1));
-    if (this.selected < this.listTop) this.listTop = this.selected;
-    if (this.selected >= this.listTop + MAX_LIST_ROWS) this.listTop = this.selected - MAX_LIST_ROWS + 1;
-    if (this.listTop > 0) out.push(t.fg("dim", `  ↑ ${String(this.listTop)} more`));
-    const frame = spinFrame();
-    for (let i = this.listTop; i < Math.min(recs.length, this.listTop + MAX_LIST_ROWS); i++) {
-      const rec = recs[i]!;
-      const sel = i === this.selected;
-      const calls = this.actions.toolCalls(rec);
-      // Badge row: `❭ RUN  General title ········ ⢎⡱ 7s · 2 tools · bg · model`
-      const left = `${sel ? t.fg("accent", "❭") : " "} ${statusBadge(rec.status, t)} ${t.bold(profileLabel(rec.profile))} ${sel ? t.fg("accent", rec.title) : rec.title}`;
-      const tags = [elapsed(durationOf(rec)), plural(calls, "tool")];
-      if (rec.status === "running" && rec.background) tags.push("bg");
-      tags.push(rec.model);
-      const tok = usageTail(this.actions.usage?.(rec));
-      if (tok) tags.push(tok.slice(3));
-      const live = rec.status === "running" ? `${spinner(t, undefined, frame)} ` : "";
-      // Narrow panes: the title keeps ≥ MIN_TITLE columns; tags drop from
-      // the end (tokens, then model) before the title is squeezed.
-      const minLeft = Math.min(visibleWidth(left), visibleWidth(left) - visibleWidth(rec.title) + MIN_TITLE);
-      let shown = tags.length;
-      const rightOf = (n: number) => `${live}${t.fg("dim", tags.slice(0, n).join(" · "))}`;
-      while (shown > 2 && visibleWidth(rightOf(shown)) + minLeft + 4 > w) shown--;
-      const right = rightOf(shown);
-      out.push(visibleWidth(right) + 16 < w ? leader(t, truncateToWidth(left, w - visibleWidth(right) - 4), right, w) : truncateToWidth(left, w));
-    }
-    const below = recs.length - (this.listTop + MAX_LIST_ROWS);
-    if (below > 0) out.push(t.fg("dim", `  ↓ ${String(below)} more`));
-    out.push(t.fg("borderMuted", "─".repeat(w)));
-    out.push(truncateToWidth(this.flash !== undefined ? `${t.fg("warning", this.flash)}  ${t.fg("dim", LIST_HINT)}` : t.fg("dim", LIST_HINT), w));
-    return out;
+    const now = spinFrame();
+    return renderTrayList(this.theme, { rows: this.rows(now), state: this.list, width: w, empty: "No subagents in this session yet.", hint: LIST_HINT, flash: this.flash, now });
   }
 
   private renderView(w: number): string[] {
@@ -293,7 +231,6 @@ export class SubagentDock implements Component {
     }
     const frame = spinFrame();
     const calls = this.actions.toolCalls(rec);
-    const header = rule(t, `${statusGlyph(rec.status, t, frame)} ${t.fg("muted", profileLabel(rec.profile))} ${t.fg("dim", "›")} ${t.bold(rec.title)}`, `${elapsed(durationOf(rec))} · ${plural(calls, "tool")}`, w);
     const meta = [`Model: ${rec.model}${rec.thinking ? ` · ${rec.thinking}` : ""}`, `id ${rec.id}`, rec.status === "running" ? (rec.background ? "background" : "foreground") : t.fg(statusColor(rec.status), STATUS_LABEL[rec.status])];
     const tok = usageTail(this.actions.usage?.(rec));
     if (tok) meta.push(tok.slice(3));
@@ -302,21 +239,16 @@ export class SubagentDock implements Component {
       if (rec.error) body.push("", t.fg(rec.status === "cancelled" ? "warning" : "error", `${rec.status === "cancelled" ? "⊘" : "✗"} ${rec.error}`));
       else if (rec.status === "cancelled") body.push("", t.fg("warning", `⊘ Cancelled${rec.cancelledBy === "user" ? " by you" : ""}`));
     }
-    const viewport = Math.max(5, (process.stdout.rows ?? 30) - 12);
-    const maxScroll = Math.max(0, body.length - viewport);
-    if (this.follow) this.scroll = maxScroll;
-    this.scroll = Math.max(0, Math.min(this.scroll, maxScroll));
-    if (this.scroll >= maxScroll) this.follow = true;
-    const visible = body.slice(this.scroll, this.scroll + viewport);
-    const pos = body.length > viewport ? t.fg("dim", ` ${String(this.scroll + visible.length)}/${String(body.length)}`) : "";
-    return [
-      header,
-      truncateToWidth(t.fg("dim", meta.join(" · ")) + pos, w),
-      "",
-      ...visible.map((l) => truncateToWidth(l, w)),
-      t.fg("borderMuted", "─".repeat(w)),
-      truncateToWidth(this.flash !== undefined ? `${t.fg("warning", this.flash)}  ${t.fg("dim", VIEW_HINT)}` : t.fg("dim", VIEW_HINT), w),
-    ];
+    return renderTrayDetail(t, {
+      width: w,
+      title: `${statusGlyph(rec.status, t, frame)} ${t.fg("muted", profileLabel(rec.profile))} ${t.fg("dim", "›")} ${t.bold(rec.title)}`,
+      right: `${elapsed(durationOf(rec))} · ${plural(calls, "tool")}`,
+      meta,
+      body,
+      scroll: this.scroll,
+      hint: VIEW_HINT,
+      flash: this.flash,
+    });
   }
 
   private act(result: string | undefined, closeOnSuccess: boolean): void {
@@ -344,31 +276,24 @@ export class SubagentDock implements Component {
     if (data === "x" && rec) return this.act(this.actions.cancel(rec.id), false);
     if (this.viewId === undefined) {
       const n = this.ordered().length;
-      if (matchesKey(data, Key.up) || data === "k") this.selected = Math.max(0, this.selected - 1);
-      else if (matchesKey(data, Key.down) || data === "j") this.selected = Math.min(Math.max(0, n - 1), this.selected + 1);
+      if (matchesKey(data, Key.up) || data === "k") this.list.move(-1, n);
+      else if (matchesKey(data, Key.down) || data === "j") this.list.move(1, n);
       else if ((matchesKey(data, Key.enter) || data === "\r") && rec) {
         this.viewId = rec.id;
-        this.follow = true;
+        this.scroll.reset();
         this.fullOutput = false;
       }
       this.tui.requestRender();
       return;
     }
-    const page = Math.max(1, (process.stdout.rows ?? 30) - 14);
-    if (matchesKey(data, Key.up) || data === "k") this.scrollBy(-1);
-    else if (matchesKey(data, Key.down) || data === "j") this.scrollBy(1);
-    else if (matchesKey(data, Key.pageUp)) this.scrollBy(-page);
-    else if (matchesKey(data, Key.pageDown) || data === " ") this.scrollBy(page);
-    else if (data === "g") {
-      this.follow = false;
-      this.scroll = 0;
-    } else if (data === "G") this.follow = true;
+    const page = trayPage();
+    if (matchesKey(data, Key.up) || data === "k") this.scroll.by(-1);
+    else if (matchesKey(data, Key.down) || data === "j") this.scroll.by(1);
+    else if (matchesKey(data, Key.pageUp)) this.scroll.by(-page);
+    else if (matchesKey(data, Key.pageDown) || data === " ") this.scroll.by(page);
+    else if (data === "g") this.scroll.home();
+    else if (data === "G") this.scroll.end();
     else if (data === "o") this.fullOutput = !this.fullOutput;
     this.tui.requestRender();
-  }
-
-  private scrollBy(delta: number): void {
-    this.follow = false;
-    this.scroll = Math.max(0, this.scroll + delta);
   }
 }

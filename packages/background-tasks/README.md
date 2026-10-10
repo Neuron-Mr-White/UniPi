@@ -12,8 +12,8 @@ continue to work. When a task finishes, the agent gets a notice.
   default, this message starts a new agent turn.
 - Gives the agent bounded log reads, so large output does not fill the context.
 - Stops a task when its output is more than 20 MiB.
-- Shows a start card, a completion card and a task dock.
-- Shows a wait line above the editor while the agent waits for a task.
+- Shows a start card, a completion card and a Background tasks tab in the work tray.
+- While the agent waits for a task, the footer shows one "Working…" line. Nothing else is drawn under the editor.
 
 ## Quick start
 
@@ -30,6 +30,24 @@ continue to work. When a task finishes, the agent gets a notice.
 | `/unipi:bg-tasks` | Opens the work tray on the Background tasks tab. |
 | `Shift+Down` | Opens the work tray on the Background tasks tab. |
 | `Ctrl+Alt+C` | Clears the notices of finished tasks. |
+
+## The Background tasks tab
+
+It looks like the Subagents tab. Running tasks come first, then recent ones.
+
+| Key | What it does |
+|---|---|
+| `↑` `↓` | Moves the selection, or scrolls the log in the detail view. |
+| `Enter` | Opens the detail view: the command, then the live log. |
+| `l` | Opens the detail view with the full log (up to 4 MB). |
+| `g` / `G` | Goes to the top, or back to the live end of the log. |
+| `s` | Stops the task (SIGTERM, then SIGKILL after a grace period). |
+| `x` `x` | Kills the task now (SIGKILL). Press `x` twice to confirm. |
+| `a` `a` | Stops every running task. Press `a` twice to confirm. |
+| `d` / `D` | Removes a finished task, or all finished tasks, from the list. |
+| `R` | Runs the command again. |
+| `c` | Shows the log path. |
+| `←` / `Esc` | Goes back from the detail view. In the list, `←` `→` switch tabs and `Esc` closes. |
 
 ## Agent tools
 

@@ -1035,6 +1035,36 @@ export class BackgroundTaskRegistry {
     return task;
   }
 
+  /**
+   * Kill now (SIGKILL, no grace period) — the tray's `x kill`. Resolves once
+   * the task has ended (or the stop wait elapsed).
+   */
+  async killTask(task: BgTask, kind: KillKind = 'user'): Promise<BgTask> {
+    if (task.status !== 'running') {
+      throw new Error(`Task ${task.id} is ${task.status}, not running`);
+    }
+    task.killKind = kind;
+    this.requestKill(task, 'SIGKILL');
+    const ended = await this.waitForEnd(task, this.stopWaitMs);
+    if (!ended) {
+      throw new Error(`Task ${task.id} did not exit within ${formatDuration(this.stopWaitMs)} after SIGKILL`);
+    }
+    return task;
+  }
+
+  /** Forget finished tasks (the tray's `d dismiss`); running ones are kept. Returns how many went. */
+  dismissTasks(ids?: readonly string[]): number {
+    let removed = 0;
+    for (const task of [...this.tasks.values()]) {
+      if (task.status === 'running') continue;
+      if (ids !== undefined && !ids.includes(task.id)) continue;
+      this.tasks.delete(task.id);
+      removed++;
+    }
+    if (removed > 0) this.onChange();
+    return removed;
+  }
+
   async stopAllRunning(
     kind: KillKind,
     reason?: string,
