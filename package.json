@@ -90,6 +90,7 @@
     "@pi-unipi/command-enchantment": "3.0.0-alpha.35",
     "@pi-unipi/compactor": "3.0.0-alpha.35",
     "@pi-unipi/core": "3.0.0-alpha.35",
+    "@pi-unipi/dream": "3.0.0-alpha.35",
     "@pi-unipi/footer": "3.0.0-alpha.35",
     "@pi-unipi/fusion": "3.0.0-alpha.35",
     "@pi-unipi/info-screen": "3.0.0-alpha.35",

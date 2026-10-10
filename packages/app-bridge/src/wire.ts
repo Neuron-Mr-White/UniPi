@@ -231,6 +231,8 @@ export type OutMsg =
       work: WorkItemInfo[];
       /** UNI-222: the long-horizon progress snapshot at connect time; absent when long-horizon never published one. */
       lhProgress?: LhProgressInfo;
+      /** UNI-118: Dream status at connect time; absent when the dream module isn't loaded. */
+      dream?: DreamStatusInfo;
     }
   | ({ t: "state" } & Partial<RunState>)
   | ({ t: "session"; reason: string } & SessionInfo)
@@ -300,7 +302,51 @@ export type OutMsg =
   /** UNI-222: the long-horizon progress snapshot changed (pushed to every
    *  client, coalesced ≤ 4/s), or the reply to `lh_progress_get` (`ref`).
    *  `progress` undefined = long-horizon isn't loaded / never published. */
-  | { t: "lh_progress"; progress: LhProgressInfo | undefined; ref?: string };
+  | { t: "lh_progress"; progress: LhProgressInfo | undefined; ref?: string }
+  /** UNI-118: Dream status changed (pushed to every client, coalesced), or the
+   *  reply to `dream_get` (`ref`). `status` undefined = the dream module isn't loaded. */
+  | { t: "dream_status"; status: DreamStatusInfo | undefined; ref?: string }
+  /** UNI-118: reply to `dream_detail{id}` — the report markdown + the run's live trajectory. */
+  | { t: "dream_detail"; detail: DreamDetailInfo; ref?: string };
+
+/** UNI-118 Dream (docs/m5/PROTOCOL.md §9). Mirrors @pi-unipi/dream's controller shapes. */
+export interface DreamProposalInfo {
+  id: string;
+  name: string;
+  kind: "skill" | "check";
+  decision: "pending" | "approved" | "rejected";
+}
+export interface DreamRunInfo {
+  id: string;
+  status: "running" | "finished" | "failed" | "stopped";
+  startedAt: number;
+  endedAt?: number;
+  manual: boolean;
+  sessions: number;
+  events: number;
+  pending: number;
+  hasReport: boolean;
+  proposals: DreamProposalInfo[];
+  summary?: string[];
+  error?: string;
+}
+export interface DreamStatusInfo {
+  v: 1;
+  enabled: boolean;
+  due?: { due: boolean; reason: string };
+  minSessions: number;
+  minGapHours: number;
+  lastRunAt: number;
+  running: boolean;
+  runs: DreamRunInfo[];
+}
+export interface DreamDetailInfo {
+  id: string;
+  report: string;
+  steps: Array<{ kind: string; text: string }>;
+  log: string[];
+}
+export type DreamAction = "run" | "stop" | "approve" | "reject" | "dismiss";
 
 /** One `@` suggestion: `value` replaces the typed `@query` (pi's completion text, e.g. `@src/a.ts` or `@"my dir/"`). */
 export type FileItem = { value: string; label: string; path: string; dir: boolean };
@@ -390,7 +436,15 @@ export type InMsg =
   /** UNI-160 §4: send a running foreground subagent to the background. */
   | { t: "work_background"; id: string; ref?: string }
   /** UNI-222: the current long-horizon progress snapshot; replies `lh_progress{progress, ref}`. */
-  | { t: "lh_progress_get"; ref?: string };
+  | { t: "lh_progress_get"; ref?: string }
+  /** UNI-118: the current Dream status; replies `dream_status{status, ref}`. */
+  | { t: "dream_get"; ref?: string }
+  /** UNI-118: one run's report + trajectory; replies `dream_detail` (or `error`). */
+  | { t: "dream_detail"; id: string; ref?: string }
+  /** UNI-118: run (allowed while background dreaming is off) / stop / approve /
+   *  reject / dismiss. `id` = run id (stop: optional), `proposal` = proposal id
+   *  (approve/reject). Replies `ack` (+ a `dream_status` push) or `error`. */
+  | { t: "dream_action"; action: DreamAction; id?: string; proposal?: string; ref?: string };
 
 const IN_TYPES = new Set([
   "prompt",
@@ -426,6 +480,9 @@ const IN_TYPES = new Set([
   "work_rerun",
   "work_background",
   "lh_progress_get",
+  "dream_get",
+  "dream_detail",
+  "dream_action",
 ]);
 
 /** Parses one phone line; `undefined` for garbage (never throws). */
@@ -556,6 +613,22 @@ export function parseIn(line: string): InMsg | { bad: string; ref?: string } | u
       return { t: "work_background", id: m.id, ref };
     case "lh_progress_get":
       return { t: "lh_progress_get", ref };
+    case "dream_get":
+      return { t: "dream_get", ref };
+    case "dream_detail":
+      if (typeof m.id !== "string" || !m.id) return { bad: "dream_detail.id must be a string", ref };
+      return { t: "dream_detail", id: m.id.slice(0, 128), ref };
+    case "dream_action": {
+      const action = m.action;
+      if (action !== "run" && action !== "stop" && action !== "approve" && action !== "reject" && action !== "dismiss") {
+        return { bad: "dream_action.action must be run|stop|approve|reject|dismiss", ref };
+      }
+      const id = typeof m.id === "string" && m.id ? m.id.slice(0, 128) : undefined;
+      const proposal = typeof m.proposal === "string" && m.proposal ? m.proposal.slice(0, 256) : undefined;
+      if ((action === "approve" || action === "reject") && (!id || !proposal)) return { bad: `dream_action ${action} needs id and proposal`, ref };
+      if (action === "dismiss" && !id) return { bad: "dream_action dismiss needs id", ref };
+      return { t: "dream_action", action, ...(id ? { id } : {}), ...(proposal ? { proposal } : {}), ref };
+    }
     default:
       return { t: m.t as "abort" | "resync", ref };
   }

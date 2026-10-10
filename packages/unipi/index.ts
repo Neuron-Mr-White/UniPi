@@ -17,6 +17,7 @@ import { readUtilSettings, simpleWrapTool, simpleWrapped, installSimpleGroupEven
 import workflow from "@pi-unipi/workflow";
 import longHorizon from "@pi-unipi/long-horizon";
 import memory from "@pi-unipi/memory";
+import dream from "@pi-unipi/dream";
 import infoScreen from "@pi-unipi/info-screen";
 import subagents from "@pi-unipi/subagents";
 import backgroundTasks from "@pi-unipi/background-tasks";
@@ -120,6 +121,7 @@ export default function (pi: ExtensionAPI) {
   load("workflow", workflow);
   load("long-horizon", longHorizon);
   load("memory", memory);
+  load("dream", dream);
   load("utility", utility);
   load("skill-registry", skillRegistry);
   load("info-screen", infoScreen);

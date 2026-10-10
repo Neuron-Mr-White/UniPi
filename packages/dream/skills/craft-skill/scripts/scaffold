@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# scaffold <skill-dir>: secret-safe skill layout. Idempotent.
+set -euo pipefail
+d="${1:?usage: scaffold <skill-dir>}"
+mkdir -p "$d"
+[ -f "$d/.gitignore" ] || printf '.env\n' > "$d/.gitignore"
+grep -qx '.env' "$d/.gitignore" || printf '.env\n' >> "$d/.gitignore"
+[ -f "$d/.env.example" ] || printf '# NAME=  (one line per secret; real values go in .env)\n' > "$d/.env.example"
+[ -f "$d/.env" ] || : > "$d/.env"
+echo "scaffolded $d (.gitignore, .env.example, .env)"

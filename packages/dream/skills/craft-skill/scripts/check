@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# check <skill-dir>: fail on unsafe secrets or a weak description.
+set -uo pipefail
+d="${1:?usage: check <skill-dir>}"; fail=0
+f="$d/SKILL.md"
+[ -f "$f" ] || { echo "FAIL: no SKILL.md"; exit 1; }
+desc=$(sed -n '/^---$/,/^---$/p' "$f" | grep -m1 '^description:' | cut -d: -f2-)
+[ -n "$desc" ] || { echo "FAIL: no description"; fail=1; }
+[ "${#desc}" -le 300 ] || echo "WARN: description ${#desc} chars; router reads first 200"
+if [ -f "$d/.env" ]; then
+  grep -qx '.env' "$d/.gitignore" 2>/dev/null || { echo "FAIL: .env not in $d/.gitignore"; fail=1; }
+fi
+pat='(sk-[A-Za-z0-9_-]{16,}|ghp_[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|xox[bp]-[A-Za-z0-9-]{10,}|(TOKEN|SECRET|PASSWORD|API_KEY)[A-Z_]*[=:][[:space:]]*["'"'"']?[A-Za-z0-9_\-]{12,})'
+hits=$(grep -rnEI --exclude=.env "$pat" "$d" 2>/dev/null)
+[ -z "$hits" ] || { echo "FAIL: secret-like value outside .env:"; echo "$hits"; fail=1; }
+[ $fail -eq 0 ] && echo "PASS $d"
+exit $fail

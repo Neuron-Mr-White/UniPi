@@ -1,0 +1,55 @@
+{
+  "name": "@pi-unipi/dream",
+  "version": "3.0.0-alpha.35",
+  "description": "A pi extension that dreams: reviews past session struggles in the background, turns repeated false paths into memory lessons, and crafts skills from errors — part of the Unipi suite",
+  "type": "module",
+  "main": "extensions/dream.ts",
+  "license": "MIT",
+  "author": "Neuron Mr White",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Neuron-Mr-White/unipi.git",
+    "directory": "packages/dream"
+  },
+  "homepage": "https://github.com/Neuron-Mr-White/unipi#readme",
+  "bugs": {
+    "url": "https://github.com/Neuron-Mr-White/unipi/issues"
+  },
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "pi-coding-agent",
+    "unipi",
+    "dream",
+    "memory",
+    "skills"
+  ],
+  "files": [
+    "extensions",
+    "src",
+    "skills",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "^0.87.1",
+    "@earendil-works/pi-coding-agent": "^0.87.1",
+    "@earendil-works/pi-tui": "^0.87.1"
+  },
+  "dependencies": {
+    "@pi-unipi/core": "3.0.0-alpha.35"
+  },
+  "pi": {
+    "extensions": [
+      "./extensions/dream.ts"
+    ],
+    "skills": [
+      "./skills"
+    ]
+  },
+  "scripts": {
+    "test": "npx tsx --test tests/*.test.ts"
+  }
+}

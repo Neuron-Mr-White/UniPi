@@ -281,4 +281,43 @@ describe("↓ handler + registration", () => {
     off();
     assert.equal(workTrayItemCount(), 3);
   });
+
+  test("a tab whose visible() is false is left out of the strip and the ↓ item count (Dream with no history and dreaming off)", async () => {
+    const pi = fakePi();
+    let shown = false;
+    registerWorkTrayTab(pi as never, tab("bg", 0, 1));
+    registerWorkTrayTab(pi as never, { ...tab("dream", 2, 4), label: "Dream", visible: () => shown });
+    assert.equal(workTrayItemCount(), 1, "hidden tab's items don't count");
+    let tray: WorkTray | undefined;
+    let done: (() => void) | undefined;
+    const ctx = {
+      hasUI: true,
+      ui: {
+        custom: (factory: (t: unknown, th: unknown, kb: unknown, d: () => void) => unknown) =>
+          new Promise<void>((resolve) => {
+            done = () => resolve();
+            tray = factory(tui(), theme, {}, () => resolve()) as WorkTray;
+          }),
+      },
+    } as never;
+    let p = openWorkTray(ctx);
+    await Promise.resolve();
+    assert.equal(strip(tray!.render(120)[0]!).includes("Dream"), false);
+    done?.();
+    await p;
+    shown = true;
+    assert.equal(workTrayItemCount(), 5);
+    p = openWorkTray(ctx, { tab: "dream" });
+    await Promise.resolve();
+    assert.equal(tray?.activeTabId(), "dream");
+    assert.match(strip(tray!.render(120)[0]!), /Dream \(4\)/);
+    done?.();
+    await p;
+  });
+
+  test("a throwing visible() hides the tab instead of breaking the tray", () => {
+    const pi = fakePi();
+    registerWorkTrayTab(pi as never, { ...tab("bg", 0, 2), visible: () => { throw new Error("x"); } });
+    assert.equal(workTrayItemCount(), 0);
+  });
 });

@@ -55,6 +55,9 @@ export interface WorkTrayTab {
   shortLabel?: string;
   order: number;
   counts(): WorkTrayCounts;
+  /** Optional: hide the tab while this returns false (e.g. Dream with no
+   *  history and dreaming off). Checked when the tray opens. */
+  visible?(): boolean;
   createPane(ctx: WorkTrayPaneContext): WorkTrayPane;
 }
 
@@ -80,8 +83,16 @@ let tuiRef: TUI | undefined;
 let unsubInput: (() => void) | undefined;
 let openTray: WorkTray | undefined;
 
+function tabVisible(tab: WorkTrayTab): boolean {
+  try {
+    return tab.visible?.() !== false;
+  } catch {
+    return false;
+  }
+}
+
 function sortedTabs(): WorkTrayTab[] {
-  return [...tabs.values()].sort((a, b) => a.order - b.order);
+  return [...tabs.values()].filter(tabVisible).sort((a, b) => a.order - b.order);
 }
 
 function safeCounts(tab: WorkTrayTab): WorkTrayCounts {
@@ -260,7 +271,7 @@ export function isWorkTrayOpen(): boolean {
 /** Total items across every registered tab (↓ only opens when > 0). */
 export function workTrayItemCount(): number {
   let n = 0;
-  for (const tab of tabs.values()) n += safeCounts(tab).total;
+  for (const tab of tabs.values()) if (tabVisible(tab)) n += safeCounts(tab).total;
   return n;
 }
 

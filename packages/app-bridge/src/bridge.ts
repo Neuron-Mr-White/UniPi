@@ -24,6 +24,8 @@ import {
   type FusionPresetInfo,
   type FusionStatusInfo,
   type LhProgressInfo,
+  type DreamDetailInfo,
+  type DreamStatusInfo,
   type InMsg,
   type InfoGroupInfo,
   type ModelInfo,
@@ -49,6 +51,32 @@ import type { BtwListPage } from "./wire.js";
 const MEDIA_CHUNK_CHARS = 700 * 1024;
 /** UNI-222: lh_progress pushes coalesce within this window (≤ 4/s). */
 export const LH_PROGRESS_COALESCE_MS = 250;
+/** UNI-118: dream_status pushes coalesce within this window. */
+export const DREAM_COALESCE_MS = 250;
+
+/** @pi-unipi/dream's UI-free controller, read lazily off globalThis (the
+ * bridge never imports @pi-unipi/dream: it may not be installed). See
+ * dream/src/controller.ts publishDreamApi(). */
+type DreamResult = { ok: boolean; message: string };
+interface DreamApi {
+  status(): DreamStatusInfo;
+  detail(id: string): DreamDetailInfo | undefined;
+  run(): DreamResult;
+  stop(id?: string): DreamResult;
+  approve(runId: string, proposalId: string): DreamResult;
+  reject(runId: string, proposalId: string): DreamResult;
+  dismiss(runId: string): DreamResult;
+  subscribe(listener: () => void): () => void;
+}
+const DREAM_API_KEY = Symbol.for("unipi.dream.api");
+const getDreamApi = (): DreamApi | undefined => (globalThis as unknown as Record<symbol, unknown>)[DREAM_API_KEY] as DreamApi | undefined;
+const dreamStatus = (): DreamStatusInfo | undefined => {
+  try {
+    return getDreamApi()?.status();
+  } catch {
+    return undefined;
+  }
+};
 
 /** @pi-unipi/btw's UI-free API, read lazily off globalThis (the bridge never
  * imports @pi-unipi/btw directly: btw may not be installed). See btw.ts
@@ -636,6 +664,10 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
       fusion: fusionPreset(),
       work: workItems(),
       ...(lhProgress() ? { lhProgress: lhProgress() } : {}),
+      ...(() => {
+        const dream = dreamStatus();
+        return dream ? { dream } : {};
+      })(),
     };
     // Entries get whatever the rest of the hello leaves of the line budget.
     const spare = LINE_BUDGET - jsonBytes(rest) - 64 * 1024;
@@ -1484,6 +1516,43 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
       case "lh_progress_get":
         write(sock, { t: "lh_progress", progress: lhProgress(), ref: msg.ref });
         return;
+      case "dream_get":
+        write(sock, { t: "dream_status", status: dreamStatus(), ref: msg.ref });
+        return;
+      case "dream_detail": {
+        const api = getDreamApi();
+        if (!api) return fail("Dream is not installed on this pi.");
+        try {
+          const detail = api.detail(msg.id);
+          if (!detail) return fail("That dream is gone.");
+          write(sock, { t: "dream_detail", detail: { ...detail, report: clipText(detail.report, 256 * 1024) }, ref: msg.ref });
+        } catch (error) {
+          fail(error instanceof Error ? error.message : String(error));
+        }
+        return;
+      }
+      case "dream_action": {
+        const api = getDreamApi();
+        if (!api) return fail("Dream is not installed on this pi.");
+        try {
+          const r =
+            msg.action === "run"
+              ? api.run()
+              : msg.action === "stop"
+                ? api.stop(msg.id)
+                : msg.action === "approve"
+                  ? api.approve(msg.id!, msg.proposal!)
+                  : msg.action === "reject"
+                    ? api.reject(msg.id!, msg.proposal!)
+                    : api.dismiss(msg.id!);
+          if (!r.ok) return fail(r.message);
+          ack();
+          pushDream();
+        } catch (error) {
+          fail(error instanceof Error ? error.message : String(error));
+        }
+        return;
+      }
       case "watch": {
         if (msg.stats !== undefined) {
           if (msg.stats) statsWatchers.add(sock);
@@ -1721,6 +1790,43 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
     }, LH_PROGRESS_COALESCE_MS);
     lhTimer.unref?.();
   });
+
+  // UNI-118: Dream status pushes (run started/finished, proposal decided…),
+  // coalesced. Subscribed lazily: the dream module may load after us.
+  let dreamTimer: ReturnType<typeof setTimeout> | undefined;
+  let unsubDream: (() => void) | undefined;
+  let lastDream = "";
+  function pushDream(): void {
+    if (dreamTimer) return;
+    dreamTimer = setTimeout(() => {
+      dreamTimer = undefined;
+      const status = dreamStatus();
+      const json = JSON.stringify(status ?? null);
+      // While a dream runs the controller ticks every 2 s: send real changes
+      // only (the phone computes elapsed time itself and pulls dream_detail
+      // for the live trajectory while its sheet is open).
+      if (json === lastDream) return;
+      lastDream = json;
+      send({ t: "dream_status", status });
+    }, DREAM_COALESCE_MS);
+    dreamTimer.unref?.();
+  }
+  const watchDream = () => {
+    if (unsubDream) return;
+    try {
+      const api = getDreamApi();
+      if (api) unsubDream = api.subscribe(pushDream);
+    } catch {
+      /* dream not loaded */
+    }
+  };
+  on("session_start", safe(() => watchDream()));
+  on("session_shutdown", safe(() => {
+    unsubDream?.();
+    unsubDream = undefined;
+    if (dreamTimer) clearTimeout(dreamTimer);
+    dreamTimer = undefined;
+  }));
 
   on("input", (event) => {
     try {
