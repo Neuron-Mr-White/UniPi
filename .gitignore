@@ -37,3 +37,6 @@ Cargo.lock.orig
 crates/kanboard/web/dist/
 crates/kanboard/web/node_modules/
 packages/*/.unipi/
+
+# Temporary ignored on alpha version, but retained as a monorepo
+unipi-app/

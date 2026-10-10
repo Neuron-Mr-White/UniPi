@@ -32,6 +32,13 @@
  * reverses); the lead/sidekick focus opens an inline dropdown fed by the
  * preset lists. With the effort control focused, Space toggles whether ←/→
  * adjusts the lead's or the sidekick's effort (default: lead).
+ *
+ * On plain model rows, Space stages the highlighted model as the Fusion
+ * lead and Alt+S stages it as the sidekick. Staging while the other half is
+ * still missing jumps to the Fusion row with that half's dropdown open —
+ * the pair cannot be confirmed incomplete, so the picker guides the next
+ * pick. (Alt+S needs a modifier because printables go to search; the
+ * input-shortcuts chord key never sees overlay input, so there is no clash.)
  */
 
 import { Key, matchesKey, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
@@ -432,10 +439,14 @@ export class ModelPicker {
         return;
       }
       if (row?.kind === "model" && !disabledFusion) {
-        this.lead = row.key;
-        this.changed();
+        this.stageFusionHalf("lead", row.key);
         return;
       }
+      return;
+    } else if (matchesKey(data, "alt+s")) {
+      // Alt+S mirrors Space for the other half of the pair: stage the
+      // highlighted model as the Fusion sidekick.
+      if (row?.kind === "model" && !disabledFusion) this.stageFusionHalf("sidekick", row.key);
       return;
     } else if (matchesKey(data, "alt+enter")) {
       // Alt+Enter = apply AND keep it as the startup default.
@@ -474,6 +485,21 @@ export class ModelPicker {
   private openMissing(): void {
     this.focus = this.lead === undefined ? "effort" : "lead"; // cycleFocus steps one past this
     this.cycleFocus();
+  }
+
+  /** Stage a model as one half of the Fusion pair. When the other half is
+   *  still missing, jump to the Fusion row and open that half's dropdown —
+   *  the pair cannot be confirmed incomplete, so guide the next pick. */
+  private stageFusionHalf(half: "lead" | "sidekick", key: ModelKey): void {
+    if (half === "lead") this.lead = key;
+    else this.sidekick = key;
+    const other = half === "lead" ? this.sidekick : this.lead;
+    if (other === undefined) {
+      this.search = ""; // the dropdown search starts fresh
+      this.selected = Math.max(0, this.rows().findIndex((r) => r.kind === "fusion"));
+      this.openMissing();
+    }
+    this.changed();
   }
 
   private applyDropdown(items: ModelKey[]): void {
@@ -770,7 +796,7 @@ export class ModelPicker {
         const other = this.effortTarget === "lead" ? "sidekick" : "lead";
         parts.push("tab lead", `←→ ${this.effortTarget} effort`, `space → ${other}`, "enter confirm", "alt+enter set default", "esc cancel");
       } else {
-        parts.push("←→ effort", "enter/tab confirm", "alt+enter set default", "space set lead", "esc cancel");
+        parts.push("←→ effort", "enter/tab confirm", "alt+enter set default", "space set lead", "alt+s sidekick", "esc cancel");
       }
     }
     return t.fg("dim", parts.join(" · "));

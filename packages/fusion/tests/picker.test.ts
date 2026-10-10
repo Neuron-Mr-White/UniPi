@@ -11,6 +11,7 @@ const LEFT = `${ESC}[D`;
 const TAB = "\t";
 const ENTER = "\r";
 const ESCAPE = ESC;
+const ALT_S = `${ESC}s`;
 
 function state(over: Partial<PickerState> = {}): PickerState {
   return {
@@ -186,6 +187,37 @@ test("space toggles which side ←/→ adjusts on the Fusion row", () => {
   const back = run(state(), [DOWN, " ", " ", RIGHT, ENTER]).result;
   assert.equal(back?.type === "fusion" && back.leadEffort, "high");
   assert.equal(back?.type === "fusion" && back.sidekickEffort, "low");
+});
+
+test("alt+s stages the highlighted model as the Fusion sidekick", () => {
+  // rows: b/glm (pinned) · fusion · c/mini · a/opus. The lead already defaults
+  // to a/opus, so staging c/mini via alt+s completes the pair in place; UP to
+  // the Fusion row, ENTER confirms it.
+  const { result } = run(state(), [DOWN, DOWN, ALT_S, UP, ENTER]);
+  assert.equal(result?.type === "fusion" && result.sidekick, "c/mini");
+  assert.equal(result?.type === "fusion" && result.lead, "a/opus");
+  // The model-row hint advertises the shortcut.
+  assert.match(run(state(), []).picker.render(140).join("\n"), /alt\+s sidekick/);
+});
+
+test("space staging a lead with no sidekick jumps to the sidekick dropdown", () => {
+  // Empty preset and defaults: both halves unset, dropdowns offer the whole
+  // catalogue (first item a/opus).
+  const s = state({ fusionLeads: [], fusionSidekicks: [], fusionDefault: { lead: undefined, sidekick: undefined } });
+  // DOWN DOWN lands on c/mini; space stages it as lead and auto-opens the
+  // Fusion row's sidekick dropdown. ENTER picks a/opus, ENTER confirms.
+  const { result } = run(s, [DOWN, DOWN, " ", ENTER, ENTER]);
+  assert.equal(result?.type === "fusion" && result.lead, "c/mini");
+  assert.equal(result?.type === "fusion" && result.sidekick, "a/opus");
+});
+
+test("alt+s with no lead staged jumps to the lead dropdown instead", () => {
+  const s = state({ fusionLeads: [], fusionSidekicks: [], fusionDefault: { lead: undefined, sidekick: undefined } });
+  // alt+s on c/mini stages the sidekick, then opens the lead dropdown
+  // (dropdown[0] = a/opus; DOWN moves to b/glm). ENTER picks it, ENTER confirms.
+  const { result } = run(s, [DOWN, DOWN, ALT_S, DOWN, ENTER, ENTER]);
+  assert.equal(result?.type === "fusion" && result.lead, "b/glm");
+  assert.equal(result?.type === "fusion" && result.sidekick, "c/mini");
 });
 
 test("the Fusion row shows both efforts and marks the side ←/→ adjusts", () => {
