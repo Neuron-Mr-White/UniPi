@@ -8,6 +8,7 @@
  * /unipi:readme and /unipi:changelog.
  */
 
+import { fileURLToPath } from "node:url";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import {
   bus,
@@ -25,7 +26,7 @@ import { renderUpdateOverlay } from "./tui/update-overlay.js";
 import { loadUpdateChangelog } from "./remote-changelog.js";
 
 /** Package version */
-const VERSION = getPackageVersion(new URL("..", import.meta.url).pathname);
+const VERSION = getPackageVersion(fileURLToPath(new URL("..", import.meta.url)));
 
 export default function updaterExtension(pi: ExtensionAPI): void {
 

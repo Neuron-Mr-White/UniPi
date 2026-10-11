@@ -6,7 +6,10 @@
 
 import { exec } from "child_process";
 import { promisify } from "util";
+import { dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import { getInstalledPackageVersion } from "@pi-unipi/core";
+import { installSpec } from "./channel.js";
 import type { InstallResult } from "../types.js";
 
 const execAsync = promisify(exec);
@@ -15,16 +18,18 @@ const execAsync = promisify(exec);
 const INSTALL_TIMEOUT_MS = 60000;
 
 /**
- * Install the latest version of @pi-unipi/unipi.
- * Uses pi CLI: `pi install npm:@pi-unipi/unipi`
+ * Install the newest @pi-unipi/unipi on `channel`.
+ * Uses pi CLI: `pi install npm:@pi-unipi/unipi[@<channel>]`
  * Returns structured result with success/failure info.
  */
-export async function installUpdate(): Promise<InstallResult> {
-  const thisDir = new URL("..", import.meta.url).pathname;
+export async function installUpdate(channel = "latest"): Promise<InstallResult> {
+  const thisDir = dirname(dirname(fileURLToPath(import.meta.url)));
 
   try {
+    // Install from the same channel the check used — a bare spec would pull
+    // `latest` and downgrade an alpha install (UNI-262).
     await execAsync(
-      "pi install npm:@pi-unipi/unipi",
+      `pi install ${installSpec(channel)}`,
       {
         timeout: INSTALL_TIMEOUT_MS,
         env: { ...process.env },

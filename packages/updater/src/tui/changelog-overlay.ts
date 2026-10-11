@@ -5,10 +5,11 @@
  */
 
 import { existsSync } from "fs";
+import { fileURLToPath } from "node:url";
 import type { Theme } from "@earendil-works/pi-coding-agent";
 import { parseChangelog, resolveChangelogPath } from "../changelog.js";
 import { renderMarkdown } from "../markdown.js";
-import { getInstalledPackageVersion } from "@pi-unipi/core";
+import { getInstalledPackageVersion, compareVersions } from "@pi-unipi/core";
 import { createListDetailOverlay } from "./list-detail-overlay.js";
 import type { ChangelogEntry } from "../../types.js";
 
@@ -17,7 +18,7 @@ import type { ChangelogEntry } from "../../types.js";
  */
 export function renderChangelogOverlay() {
   const installedVersion = getInstalledPackageVersion(
-    new URL("..", import.meta.url).pathname,
+    fileURLToPath(new URL("..", import.meta.url)),
     "@pi-unipi/unipi",
   );
 
@@ -39,12 +40,7 @@ export function renderChangelogOverlay() {
       } else if (entry.version === installedVersion) {
         label = theme.fg("success", "✓ Current");
       } else {
-        const pa = entry.version.split(".").map(Number);
-        const pb = installedVersion.split(".").map(Number);
-        const isNewer =
-          pa[0]! > pb[0]! ||
-          (pa[0] === pb[0] && pa[1]! > pb[1]!) ||
-          (pa[0] === pb[0] && pa[1] === pb[1] && pa[2]! > pb[2]!);
+        const isNewer = compareVersions(entry.version, installedVersion) > 0;
         label = isNewer ? theme.fg("warning", "↑ New") : "";
       }
 

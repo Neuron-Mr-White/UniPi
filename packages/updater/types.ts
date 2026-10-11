@@ -20,6 +20,8 @@ export interface LastCheckCache {
   latestVersion: string;
   /** Version the user chose to skip */
   skippedVersion?: string;
+  /** npm dist-tag the check followed (absent in pre-UNI-262 caches = "latest") */
+  channel?: string;
 }
 
 /** A parsed changelog version entry */
@@ -54,6 +56,8 @@ export interface UpdateCheckResult {
   latestVersion: string;
   /** Currently installed version */
   currentVersion: string;
+  /** npm dist-tag this install follows ("alpha", "latest", …) */
+  channel?: string;
   /** Error message if check failed */
   error?: string;
 }

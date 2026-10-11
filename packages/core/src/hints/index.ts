@@ -12,6 +12,7 @@
  *   - Settings: namespace "hints" (enabled, header, crab, reset)
  */
 
+import { fileURLToPath } from "node:url";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
   encodeKitty,
@@ -617,7 +618,7 @@ export function installHints(pi: ExtensionAPI): void {
     try {
       const v = getInstalledPackageVersion(cwd, "@pi-unipi/unipi");
       if (v !== "0.0.0") return v;
-      const thisDir = new URL(".", import.meta.url).pathname;
+      const thisDir = fileURLToPath(new URL(".", import.meta.url));
       return getInstalledPackageVersion(thisDir, "@pi-unipi/unipi");
     } catch {
       return "0.0.0";

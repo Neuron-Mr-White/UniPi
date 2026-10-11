@@ -93,7 +93,7 @@ export function renderUpdateOverlay(checkResult: UpdateCheckResult, providedNewe
       state.installing = true;
       tui.requestRender();
 
-      const result = await installUpdate();
+      const result = await installUpdate(state.result.channel ?? "latest");
       if (result.success) {
         done({ updated: true });
       } else {
