@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.0.0-alpha.39] — 2026-10-11
+
+### Added
+- UniPi app: switch a session's working mode from the app. The app sees the current mode and changes it live (`none` returns to regular mode; another work mode is entered without a prompt). A mode switch is refused while another paused task already holds the park slot.
+- Long-horizon: new `unipi:lh-mode` runner used for that switch.
+
 ## [3.0.0-alpha.38] — 2026-10-11
 
 ### Fixed
