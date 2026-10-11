@@ -24,7 +24,7 @@ import {
   DEFAULT_BATCH_CONCURRENCY,
 } from "./constants.js";
 import { resolveBrowserProfile, resolveOSProfile } from "./profiles.js";
-import { getWreq, getDefuddle } from "./dependencies.js";
+import { getWreq, getDefuddle, type EngineResponse } from "./dependencies.js";
 import { describeError } from "./errors.js";
 import { parseHTML, extractTextContent, elementToMarkdown } from "./dom.js";
 import { truncateContent, formatContent } from "./format.js";
@@ -195,7 +195,7 @@ function findMetaRefresh(document: Document): string | null {
  * Detect content type from response.
  */
 function detectContentType(
-  response: Response,
+  response: EngineResponse,
   buffer: ArrayBuffer
 ): { mimeType: string; isBinary: boolean } {
   const contentType = response.headers.get("content-type") || "";
@@ -256,8 +256,8 @@ export async function defuddleFetch(
     });
   }
 
-  // Get wreq-js
-  const wreq = getWreq();
+  // Get wreq-js (lazy; plain-fetch fallback when the native binding can't load)
+  const wreq = await getWreq();
 
   // Build request options
   const resolvedBrowser = resolveBrowserProfile(browser);

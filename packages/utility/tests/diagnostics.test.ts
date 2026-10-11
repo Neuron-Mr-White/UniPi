@@ -44,3 +44,35 @@ describe("formatDiagnosticsReport", () => {
     assert.ok(markdown.includes(report.overall.toUpperCase()));
   });
 });
+
+import { vcRuntimeChecks } from "../src/diagnostics/engine.ts";
+
+describe("vcRuntimeChecks (UNI-261)", () => {
+  it("is silent off Windows", () => {
+    assert.deepEqual(vcRuntimeChecks("linux", "C:\\Windows", () => false), []);
+    assert.deepEqual(vcRuntimeChecks("darwin", "C:\\Windows", () => false), []);
+  });
+
+  it("warns with the winget fix when vcruntime140.dll is missing", () => {
+    const seen: string[] = [];
+    const [check] = vcRuntimeChecks("win32", "C:\\Windows\\", (p) => { seen.push(p); return false; });
+    assert.equal(check.status, "warning");
+    assert.ok(seen.includes("C:\\Windows\\System32\\vcruntime140.dll"), seen.join(","));
+    assert.match(check.message, /vcruntime140\.dll/);
+    assert.match(check.suggestion ?? "", /winget install Microsoft\.VCRedist\.2015\+\.x64/);
+    assert.match(check.suggestion ?? "", /aka\.ms\/vs\/17\/release\/vc_redist\.x64\.exe/);
+  });
+
+  it("is healthy when the runtime DLLs exist", () => {
+    const [check] = vcRuntimeChecks("win32", "D:\\Win", () => true);
+    assert.equal(check.status, "healthy");
+    assert.equal(check.suggestion, undefined);
+  });
+
+  it("runDiagnostics includes the wreq_js native check", async () => {
+    const report = await runDiagnostics();
+    const w = report.checks.find((c) => c.name === "wreq_js");
+    assert.ok(w);
+    assert.equal(w.status, "healthy");
+  });
+});

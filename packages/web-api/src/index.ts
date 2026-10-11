@@ -100,8 +100,8 @@ export default function (pi: ExtensionAPI) {
           ).length;
 
           // Check smart-fetch engine availability
-          const deps = checkDependencies();
-          const smartFetchStatus = deps.available ? "✓ Ready" : `Missing: ${deps.missing.join(", ")}`;
+          const deps = await checkDependencies();
+          const smartFetchStatus = deps.available ? "✓ Ready" : `Fallback (plain fetch): ${deps.missing.join(", ")} unavailable`;
 
           // wigolo status — only probe when the user has it enabled, so a
           // disabled provider never pays the daemon-startup cost.

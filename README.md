@@ -41,6 +41,15 @@ UniPi needs [Pi](https://www.npmjs.com/package/@earendil-works/pi-coding-agent)
 `0.87.1` or later. This command installs 21 extension packages. Each package
 also works alone.
 
+> [!TIP]
+> **Windows:** web reads use a native module that needs the Microsoft Visual
+> C++ 2015-2022 runtime. Most Windows installs have it; slimmed images such as
+> tiny11 do not. Without it UniPi still loads and web reads fall back to plain
+> fetch. To install it, run
+> `winget install Microsoft.VCRedist.2015+.x64` or download
+> [vc_redist.x64.exe](https://aka.ms/vs/17/release/vc_redist.x64.exe).
+> `/unipi:doctor` reports whether it is missing.
+
 <p align="center">
   <img src="docs/assets/screenshots/simple-memory-glance.png" alt="A UniPi session in simple mode with memory recall, memory save and the glance footer">
 </p>

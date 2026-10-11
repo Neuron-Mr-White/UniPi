@@ -240,6 +240,61 @@ const unipiRuntimePlugin: DiagnosticPlugin = {
   },
 };
 
+/**
+ * Windows: native bindings (wreq-js for web reads) need the Visual C++
+ * 2015-2022 runtime. tiny11-style images ship without it (UNI-261).
+ * Pure so it can be tested on any OS.
+ */
+export function vcRuntimeChecks(
+  platform: NodeJS.Platform = process.platform,
+  systemRoot: string = process.env.SystemRoot ?? process.env.windir ?? "C:\\Windows",
+  exists: (p: string) => boolean = existsSync,
+): DiagnosticCheck[] {
+  if (platform !== "win32") return [];
+  const dir = `${systemRoot.replace(/[\\/]+$/, "")}\\System32`;
+  const missing = ["vcruntime140.dll", "vcruntime140_1.dll"].filter((dll) => !exists(`${dir}\\${dll}`));
+  const ok = missing.length === 0;
+  return [{
+    name: "vc_runtime",
+    module: "@pi-unipi/web-api",
+    status: ok ? "healthy" : "warning",
+    message: ok
+      ? "Visual C++ 2015-2022 runtime present"
+      : `Visual C++ 2015-2022 runtime missing (${missing.join(", ")} not in ${dir}) — web reads use the plain-fetch fallback (no TLS fingerprinting)`,
+    suggestion: ok
+      ? undefined
+      : "Install it: `winget install Microsoft.VCRedist.2015+.x64` (or https://aka.ms/vs/17/release/vc_redist.x64.exe), then restart pi",
+    durationMs: 0,
+  }];
+}
+
+/** Native dependencies UniPi loads lazily — report when one can't load. */
+const nativeDepsPlugin: DiagnosticPlugin = {
+  name: "native_deps",
+  module: "@pi-unipi/web-api",
+  async run(): Promise<DiagnosticCheck[]> {
+    const checks = vcRuntimeChecks();
+    const start = Date.now();
+    try {
+      const specifier = "wreq-js";
+      await import(/* @vite-ignore */ specifier);
+      checks.push({ name: "wreq_js", module: "@pi-unipi/web-api", status: "healthy", message: "wreq-js native binding loads (smart-fetch with TLS fingerprinting)", durationMs: Date.now() - start });
+    } catch (err) {
+      checks.push({
+        name: "wreq_js",
+        module: "@pi-unipi/web-api",
+        status: "warning",
+        message: `wreq-js native binding failed to load: ${(err as Error)?.message ?? String(err)} — smart-fetch falls back to plain fetch`,
+        suggestion: process.platform === "win32"
+          ? "Install the VC++ runtime: `winget install Microsoft.VCRedist.2015+.x64` (or https://aka.ms/vs/17/release/vc_redist.x64.exe)"
+          : "Reinstall UniPi (`pi update`) so the native binding for this platform is present",
+        durationMs: Date.now() - start,
+      });
+    }
+    return checks;
+  },
+};
+
 // ─── Diagnostics Engine ──────────────────────────────────────────────────────
 
 /** Registry of diagnostic plugins */
@@ -248,6 +303,7 @@ const plugins: DiagnosticPlugin[] = [
   configFilesPlugin,
   nodeEnvironmentPlugin,
   unipiRuntimePlugin,
+  nativeDepsPlugin,
 ];
 
 /** Register a custom diagnostic plugin */
