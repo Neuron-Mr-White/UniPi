@@ -665,7 +665,7 @@ dependencies = [
 
 [[package]]
 name = "kanboard"
-version = "3.0.0-alpha.37"
+version = "3.0.0-alpha.38"
 dependencies = [
  "anyhow",
  "axum",

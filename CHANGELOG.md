@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.0.0-alpha.38] — 2026-10-11
+
+### Fixed
+- Dream: "Run now" (`/unipi:dream run`) failed instantly. The published `memory` and `ask-user` packages were missing files, so Dream's background run could not load. Both packages now ship complete, and a failed Dream run shows the actual error.
+- Release check added: a package is not released if one of its files imports a file the package does not ship.
+
 ## [3.0.0-alpha.37] — 2026-10-11
 
 ### Added
