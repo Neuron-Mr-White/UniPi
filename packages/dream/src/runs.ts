@@ -127,7 +127,10 @@ export function runFromStaging(staging: string, decisions: DreamState["decisions
   let error: string | undefined;
   if (status === "failed") {
     if (meta?.exitCode === 124) error = "timed out (max runtime)";
-    else if (typeof meta?.exitCode === "number") error = `exit ${String(meta.exitCode)} without a report`;
+    else if (typeof meta?.exitCode === "number") {
+      const why = logErrorLine(path.join(staging, "trajectory.log"));
+      error = why ? `exit ${String(meta.exitCode)}: ${why}` : `exit ${String(meta.exitCode)} without a report`;
+    }
     else if (meta?.signal) error = `killed by ${meta.signal}`;
     else error = "ended without a report";
   }
@@ -327,4 +330,27 @@ export function summarizeReport(report: string): string[] {
 /** Summary of a staging dir's report. */
 export function reportSummary(staging: string): string[] {
   return summarizeReport(readReport(staging));
+}
+
+/** The child's own reason for failing: the last `Error:` line of its log
+ *  (pi prints "Error: Failed to load extension …" and exits 1), clipped. */
+export function logErrorLine(logFile: string): string | undefined {
+  try {
+    const fd = fs.openSync(logFile, "r");
+    try {
+      const size = fs.fstatSync(fd).size;
+      const len = Math.min(size, 16 * 1024);
+      const buf = Buffer.alloc(len);
+      fs.readSync(fd, buf, 0, len, size - len);
+      const lines = buf.toString("utf8").split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+      const hit = [...lines].reverse().find((l) => /^(Error|TypeError|SyntaxError|ReferenceError)\b/.test(l));
+      if (!hit) return undefined;
+      const msg = hit.replace(/^Error:\s*/, "");
+      return msg.length > 240 ? `${msg.slice(0, 239)}…` : msg;
+    } finally {
+      fs.closeSync(fd);
+    }
+  } catch {
+    return undefined;
+  }
 }

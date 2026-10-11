@@ -84,6 +84,20 @@ describe("runs", () => {
     assert.equal(exited.status, "finished");
   });
 
+  it("a failed run shows the child's own error line from trajectory.log", () => {
+    const now = Date.now();
+    const dir = staging(now - 4000, { meta: { exitCode: 1, endedAt: now } });
+    writeFileSync(
+      join(dir, "trajectory.log"),
+      'Error: Failed to load extension "/x/@pi-unipi/memory/index.ts": Failed to load extension: Cannot find module \'./save-session.js\'\nRequire stack:\n- /x/index.ts\nHint: Start without extensions using "pi -ne".\n',
+    );
+    const r = runFromStaging(dir, {}, now)!;
+    assert.equal(r.status, "failed");
+    assert.match(r.error!, /^exit 1: Failed to load extension .*save-session\.js/);
+    const bare = runFromStaging(staging(now - 3000, { meta: { exitCode: 2, endedAt: now } }), {}, now)!;
+    assert.equal(bare.error, "exit 2 without a report");
+  });
+
   it("an old staging dir without run.json still lists (start time from its name)", () => {
     const r = runFromStaging(staging(1_700_000_000_000, { report: REPORT, meta: null }))!;
     assert.equal(r.startedAt, 1_700_000_000_000);

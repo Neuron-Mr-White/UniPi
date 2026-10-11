@@ -37,6 +37,7 @@
     "settings.ts",
     "tools.ts",
     "commands.ts",
+    "save-session.ts",
     "index.ts",
     "tui/**/*",
     "skills/**/*",

@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { readdirSync, readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { posix, resolve } from "node:path";
 
 const root = resolve(import.meta.dirname, "..");
 const isTest = (path) =>
@@ -57,6 +57,24 @@ for (const dir of packageDirs) {
       throw new Error(`${pkg.name} pi manifest mounts ${mount} but it is not in the tarball`);
     }
   }
+
+  // Every relative import in a shipped source file must resolve to a file in
+  // the SAME tarball. A file left out of `files` (memory's save-session.ts,
+  // ask-user's questions.ts) passes every repo test and only breaks a real
+  // install that loads the package on its own (dream's child pi -e <memory>).
+  const shipped = new Set(files);
+  const missing = [];
+  for (const file of files) {
+    if (!/\.(ts|mts|js|mjs)$/.test(file) || file.endsWith(".d.ts") || isTest(file)) continue;
+    const src = readFileSync(resolve(root, "packages", dir, file), "utf8");
+    for (const m of src.matchAll(/(?:^|\n)\s*(?:import|export)\s[^;]*?from\s*["'](\.{1,2}\/[^"']+)["']|import\(\s*["'](\.{1,2}\/[^"']+)["']\s*\)/g)) {
+      const spec = m[1] ?? m[2];
+      const base = posix.normalize(posix.join(posix.dirname(file), spec));
+      const candidates = [base, base.replace(/\.js$/, ".ts"), base.replace(/\.mjs$/, ".mts"), `${base}.ts`, `${base}/index.ts`, `${base}.js`, `${base}/index.js`];
+      if (!candidates.some((c) => shipped.has(c))) missing.push(`${file} → ${spec}`);
+    }
+  }
+  if (missing.length) throw new Error(`${pkg.name} tarball imports files it does not ship:\n${missing.join("\n")}`);
 }
 
 console.log(`Tarball manifests passed: root + ${packageDirs.length} package directories`);
