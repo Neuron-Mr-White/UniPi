@@ -101,7 +101,9 @@
     "@pi-unipi/updater": "3.0.0-alpha.36",
     "@pi-unipi/utility": "3.0.0-alpha.36",
     "@pi-unipi/web-api": "3.0.0-alpha.36",
-    "@pi-unipi/workflow": "3.0.0-alpha.36"
+    "@pi-unipi/workflow": "3.0.0-alpha.36",
+    "@resvg/resvg-wasm": "^2.6.2",
+    "beautiful-mermaid": "^1.1.3"
   },
   "devDependencies": {
     "@earendil-works/pi-agent-core": "^0.87.1",

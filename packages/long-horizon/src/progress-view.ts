@@ -455,9 +455,10 @@ function bodyRows(run: LhProgressRun | undefined, inner: number): number {
   return 2;
 }
 
-/** Frame height for this snapshot within `maxHeight` rows. */
-export function progressViewHeight(progress: LhProgressEvent | undefined, width: number, maxHeight: number): number {
+/** Frame height for this snapshot within `maxHeight` rows (`chart` = the image mode takes all of it). */
+export function progressViewHeight(progress: LhProgressEvent | undefined, width: number, maxHeight: number, chart = false): number {
   const run = progress?.current ?? progress?.last;
+  if (chart && run) return Math.max(Math.min(8, maxHeight), maxHeight);
   const W = Math.max(30, width);
   // border 2 + header (title, counts, gap; +1 idle line) + body + log sep + log + footer
   const header = run ? (progress?.current ? 3 : 4) : 0;
@@ -466,10 +467,22 @@ export function progressViewHeight(progress: LhProgressEvent | undefined, width:
 }
 
 /**
+ * Chart mode (UNI-258): the overlay hands the view a function that returns the
+ * image as lines for a `cols × rows` body box (undefined = no frame yet → the
+ * text body is drawn), plus the footer's mode hint.
+ */
+export interface ProgressChartSlot {
+  /** Image lines (line 0 carries the escape sequence) and the cell box it covers. */
+  image(cols: number, rows: number): { lines: string[]; columns: number } | undefined;
+  /** Footer hint, e.g. "m text" / "m chart" / "chart unavailable: …". */
+  hint?: string;
+}
+
+/**
  * The whole view, exactly `height` lines of exactly `width` cells (inside its
  * own rounded border). `progress` undefined = nothing published yet.
  */
-export function renderProgressView(t: KitTheme, progress: LhProgressEvent | undefined, width: number, height: number, now: number): string[] {
+export function renderProgressView(t: KitTheme, progress: LhProgressEvent | undefined, width: number, height: number, now: number, chart?: ProgressChartSlot): string[] {
   const W = Math.max(30, width);
   const H = Math.max(8, height);
   const c = new Canvas(W, H);
@@ -536,7 +549,17 @@ export function renderProgressView(t: KitTheme, progress: LhProgressEvent | unde
 
   // Body.
   const flashes = changedAt(progress?.log ?? []);
-  renderRunBody({ t, c, x, y, w: inner, h: logTop - y, now, live, flashes }, run);
+  const bodyH = logTop - y - 1;
+  const image = chart && bodyH > 0 ? chart.image(inner, bodyH) : undefined;
+  if (image) {
+    // Centre the image box; line 0 holds the sequence + the cells it covers (the escape itself is zero-width).
+    const left = x + Math.max(0, Math.floor((inner - image.columns) / 2));
+    image.lines.forEach((line, i) => {
+      if (line) c.raw(left, y + i, line + " ".repeat(image.columns), image.columns);
+    });
+  } else {
+    renderRunBody({ t, c, x, y, w: inner, h: logTop - y, now, live, flashes }, run);
+  }
 
   // Log (medium tempo): newest bright, older dim.
   c.put(x, logTop, "log ", "muted", true);
@@ -555,6 +578,10 @@ export function renderProgressView(t: KitTheme, progress: LhProgressEvent | unde
   c.put(x, footer, "Esc / q close", "dim");
   c.put(W - 2 - updated.length, footer, updated, "dim");
   if (live) c.put(x + 15, footer, "● live", "accent");
+  if (chart?.hint) {
+    const hx = x + 15 + (live ? 8 : 0);
+    c.put(hx, footer, fit(chart.hint, Math.max(0, W - 2 - updated.length - 2 - hx)), "dim");
+  }
   return c.serialize(t);
 }
 
