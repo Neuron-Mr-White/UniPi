@@ -1349,8 +1349,12 @@ void describe('BackgroundTaskRegistry', () => {
 
         child.writeStdout('adopted stdout line\n');
         child.writeStderr('adopted stderr line\n');
-        await waitFor(() => task.bytesWritten > 0, 'adopted output captured');
-        const output = await readFile(task.outputAbsPath, 'utf8');
+        // bytesWritten counts before the write stream flushes; poll the file itself.
+        let output = '';
+        for (let i = 0; i < 100 && !/adopted stderr line/.test(output); i++) {
+          output = await readFile(task.outputAbsPath, 'utf8').catch(() => '');
+          if (!/adopted stderr line/.test(output)) await new Promise((resolve) => setTimeout(resolve, 10));
+        }
         assert.match(output, /adopted stdout line/);
         assert.match(output, /adopted stderr line/);
 
