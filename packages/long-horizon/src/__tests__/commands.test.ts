@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test, beforeEach } from "node:test";
-import { bus, resetBusForTests, UNIPI_EVENTS } from "@pi-unipi/core";
+import { bus, callCommandRunner, resetBusForTests, UNIPI_EVENTS } from "@pi-unipi/core";
 import { GoalMachine } from "../engine/goal-state.js";
 import { GoalToolset } from "../tools/goal.js";
 import { OwnerCoordinator } from "../owner.js";
@@ -225,4 +225,61 @@ test("goal completions advertise stop", () => {
   const r = rig();
   const items = r.completions("unipi:goal", "s") as Array<{ value: string }>;
   assert.ok(items.some((item) => item.value === "stop"), "stop offered among s* subcommands");
+});
+
+// ── UNI-269: the app's mode chip (unipi:lh-mode runner) ──────────────────
+
+async function selectMode(mode: string): Promise<{ ok: boolean; mode?: string; reason?: string }> {
+  const out = await callCommandRunner<{ ok: boolean; mode?: string; reason?: string }>("unipi:lh-mode", {}, { mode });
+  assert.ok(out.found, "unipi:lh-mode runner registered");
+  return out.result!;
+}
+
+test("UNI-269: picking a mode with no owner shows it at once and sticks for the next turns", async () => {
+  const r = rig();
+  const states: string[] = [];
+  const gate = r.gate as unknown as { deps: { onDisplayChanged?: () => void } };
+  gate.deps.onDisplayChanged = () => states.push(r.gate.displayMode());
+  assert.deepEqual(await selectMode("graph"), { ok: true, mode: "graph" });
+  assert.equal(r.gate.displayMode(), "graph", "display flips before any turn");
+  assert.deepEqual(states, ["graph"]);
+  assert.deepEqual(r.sent, [], "no prompt is sent");
+  const turn = await r.gate.resolveForTurn("do the thing");
+  assert.equal(turn.mode, "graph");
+  assert.equal(turn.source, "explicit");
+});
+
+test("UNI-269: none ends the active owner and pins regular", async () => {
+  const r = rig();
+  startGoal(r);
+  assert.deepEqual(await selectMode("none"), { ok: true, mode: "none" });
+  assert.equal(r.owner.getActive(), undefined);
+  assert.equal(r.owner.getParked(), undefined, "terminal, not parked");
+  assert.equal(r.gate.displayMode(), "none");
+  assert.equal((await r.gate.resolveForTurn("x")).mode, "none");
+});
+
+test("UNI-269: switching away from an active owner parks it (and pauses a goal)", async () => {
+  const r = rig();
+  startGoal(r);
+  assert.deepEqual(await selectMode("swarm"), { ok: true, mode: "swarm" });
+  assert.equal(r.owner.getActive(), undefined);
+  assert.equal(r.owner.getParked()?.kind, "goal");
+  assert.equal(r.machine.get()?.status, "paused");
+  assert.equal(r.gate.displayMode(), "swarm");
+  assert.ok(ownerChangedEvents(r).some((e) => e.event === "suspended"));
+});
+
+test("UNI-269: the active owner's own mode is a no-op; a held park slot refuses; garbage is refused", async () => {
+  const r = rig();
+  r.owner.activate("graph", "g1");
+  assert.deepEqual(await selectMode("graph"), { ok: true, mode: "graph" });
+  assert.equal(r.owner.getActive()?.kind, "graph");
+  r.owner.suspend("paused(user_requested)");
+  r.owner.activate("swarm", "s1");
+  const refused = await selectMode("goal");
+  assert.equal(refused.ok, false);
+  assert.match(refused.reason ?? "", /graph \("g1"\) is already parked/);
+  assert.equal(r.owner.getActive()?.kind, "swarm", "the active owner keeps the session");
+  assert.deepEqual(await selectMode("plan"), { ok: false, reason: 'unknown mode "plan"' });
 });

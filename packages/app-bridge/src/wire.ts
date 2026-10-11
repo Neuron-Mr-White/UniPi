@@ -131,6 +131,20 @@ export type LhProgressInfo = {
   updatedAt: number;
 };
 
+/** UNI-269: the session's long-horizon working mode (`@pi-unipi/core`
+ *  LhStateEvent), relayed verbatim. `mode` = what the next turn runs in
+ *  (`none` = regular); `paused` = a parked owner's mode. */
+export type LhModeInfo = {
+  mode: string;
+  paused?: string;
+  owner?: { kind: string; status: "active" | "parked" };
+  lastStop?: { kind: string; at: number };
+};
+
+/** UNI-269: the modes `set_lh_mode` accepts. */
+export const LH_MODE_IDS = ["goal", "ralph", "swarm", "graph", "none"] as const;
+export type LhModeId = (typeof LH_MODE_IDS)[number];
+
 /** One row of the phone's "Running" section (UNI-160 §4): a background task,
  *  a subagent, or the Fusion sidekick, in one shape. */
 export interface WorkItemInfo {
@@ -231,6 +245,8 @@ export type OutMsg =
       work: WorkItemInfo[];
       /** UNI-222: the long-horizon progress snapshot at connect time; absent when long-horizon never published one. */
       lhProgress?: LhProgressInfo;
+      /** UNI-269: the working mode at connect time; absent when long-horizon isn't loaded. */
+      lhMode?: LhModeInfo;
       /** UNI-118: Dream status at connect time; absent when the dream module isn't loaded. */
       dream?: DreamStatusInfo;
     }
@@ -303,6 +319,8 @@ export type OutMsg =
    *  client, coalesced ≤ 4/s), or the reply to `lh_progress_get` (`ref`).
    *  `progress` undefined = long-horizon isn't loaded / never published. */
   | { t: "lh_progress"; progress: LhProgressInfo | undefined; ref?: string }
+  /** UNI-269: the working mode changed (pushed to every client, coalesced). */
+  | { t: "lh_mode"; mode: LhModeInfo | undefined }
   /** UNI-118: Dream status changed (pushed to every client, coalesced), or the
    *  reply to `dream_get` (`ref`). `status` undefined = the dream module isn't loaded. */
   | { t: "dream_status"; status: DreamStatusInfo | undefined; ref?: string }
@@ -437,6 +455,9 @@ export type InMsg =
   | { t: "work_background"; id: string; ref?: string }
   /** UNI-222: the current long-horizon progress snapshot; replies `lh_progress{progress, ref}`. */
   | { t: "lh_progress_get"; ref?: string }
+  /** UNI-269: switch the working mode (no prompt); `none` = /unipi:regular.
+   *  Replies `ack` (then an `lh_mode` push) or `error{message}`. */
+  | { t: "set_lh_mode"; mode: LhModeId; ref?: string }
   /** UNI-118: the current Dream status; replies `dream_status{status, ref}`. */
   | { t: "dream_get"; ref?: string }
   /** UNI-118: one run's report + trajectory; replies `dream_detail` (or `error`). */
@@ -480,6 +501,7 @@ const IN_TYPES = new Set([
   "work_rerun",
   "work_background",
   "lh_progress_get",
+  "set_lh_mode",
   "dream_get",
   "dream_detail",
   "dream_action",
@@ -613,6 +635,11 @@ export function parseIn(line: string): InMsg | { bad: string; ref?: string } | u
       return { t: "work_background", id: m.id, ref };
     case "lh_progress_get":
       return { t: "lh_progress_get", ref };
+    case "set_lh_mode":
+      if (typeof m.mode !== "string" || !(LH_MODE_IDS as readonly string[]).includes(m.mode)) {
+        return { bad: "set_lh_mode.mode must be goal|ralph|swarm|graph|none", ref };
+      }
+      return { t: "set_lh_mode", mode: m.mode as LhModeId, ref };
     case "dream_get":
       return { t: "dream_get", ref };
     case "dream_detail":

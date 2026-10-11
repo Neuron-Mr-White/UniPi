@@ -16,9 +16,9 @@
  */
 
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { bus, appendProgress, sendHarnessUserMessage, UNIPI_EVENTS, type ProgressData } from "@pi-unipi/core";
+import { bus, appendProgress, registerCommandRunner, sendHarnessUserMessage, UNIPI_EVENTS, type ProgressData } from "@pi-unipi/core";
 import type { LhMode, OwnerKind } from "./modes.js";
-import { MODE_REGISTRY } from "./modes.js";
+import { isLhMode, MODE_REGISTRY, modeForOwnerKind } from "./modes.js";
 import type { Gate } from "./gate.js";
 import type { OwnerCoordinator } from "./owner.js";
 import type { RalphLoop } from "./engine/ralph.js";
@@ -324,4 +324,59 @@ export function registerLongHorizonCommands(
     },
   });
 
+  // UNI-269: the app's mode chip (app-bridge `set_lh_mode`) — switch the
+  // session's working mode without sending a prompt.
+  registerCommandRunner(LH_MODE_RUNNER, async (_ctx, args) =>
+    selectSessionMode(gate, owner, String((args as { mode?: unknown } | undefined)?.mode ?? ""), stopActiveOwnerFor, machine),
+  );
+}
+
+/** Runner name the app bridge calls for `set_lh_mode` (UNI-269). */
+export const LH_MODE_RUNNER = "unipi:lh-mode";
+
+export type SelectModeResult = { ok: true; mode: LhMode } | { ok: false; reason: string };
+
+/**
+ * UNI-269: pick the session's working mode from outside the TUI (the app's
+ * mode chip), with no prompt. Mirrors the slash commands:
+ *  - `none` = /unipi:regular: ends the active owner (terminal) and pins
+ *    regular mode.
+ *  - a work mode = /unipi:<mode> minus the prompt: an active owner of
+ *    another mode is parked first (refused when the park slot is held),
+ *    then the mode is sticky for the next turns and shows at once.
+ *  - the active owner's own mode is a no-op.
+ */
+export function selectSessionMode(
+  gate: Gate,
+  owner: OwnerCoordinator,
+  mode: string,
+  stopActive: () => string | undefined,
+  machine?: GoalMachine,
+): SelectModeResult {
+  if (!isLhMode(mode)) return { ok: false, reason: `unknown mode "${mode}"` };
+  if (mode === "none") {
+    stopActive();
+    gate.setSessionMode("none");
+    return { ok: true, mode };
+  }
+  const active = owner.getActive();
+  if (active && modeForOwnerKind(active.kind) === mode) return { ok: true, mode };
+  if (active) {
+    // Same as the gate's suspend-and-switch hook: a goal pauses with its owner.
+    if (active.kind === "goal") machine?.pause("paused(superseded)");
+    const reason = `paused(superseded_by:${mode})`;
+    const suspended = owner.suspend(reason);
+    if (!suspended) {
+      const parked = owner.getParked();
+      return {
+        ok: false,
+        reason: parked
+          ? `A ${parked.kind === "ralph-loop" ? "ralph loop" : parked.kind} ("${parked.label}") is already parked — resume or clear it first.`
+          : "The running work could not be parked.",
+      };
+    }
+    bus.emit(UNIPI_EVENTS.LONG_HORIZON_OWNER_CHANGED, { event: "suspended", ownerId: suspended.ownerId, reason });
+  }
+  gate.selectMode(mode);
+  return { ok: true, mode };
 }

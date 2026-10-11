@@ -24,6 +24,7 @@ import {
   type FusionPresetInfo,
   type FusionStatusInfo,
   type LhProgressInfo,
+  type LhModeInfo,
   type DreamDetailInfo,
   type DreamStatusInfo,
   type InMsg,
@@ -43,7 +44,7 @@ import { fileSuggestions } from "./files.js";
 import { statPaths } from "./paths.js";
 import { registerPath, resolveMedia } from "./media.js";
 import { listWorkItems, stopWorkItem, backgroundWorkItem, workLogPage } from "./work.js";
-import { bus, pendingWorkLabel, silenceCommandEcho, subscribePendingWork, UNIPI_EVENTS } from "@pi-unipi/core";
+import { bus, callCommandRunner, pendingWorkLabel, silenceCommandEcho, subscribePendingWork, UNIPI_EVENTS } from "@pi-unipi/core";
 import type { BtwListPage } from "./wire.js";
 
 /** `media_chunk.data` (base64) stays well under the 900 KiB bridge line
@@ -51,6 +52,15 @@ import type { BtwListPage } from "./wire.js";
 const MEDIA_CHUNK_CHARS = 700 * 1024;
 /** UNI-222: lh_progress pushes coalesce within this window (≤ 4/s). */
 export const LH_PROGRESS_COALESCE_MS = 250;
+/** UNI-269: the discovery record's `lhMode`/`lhPaused` (host → chat_list → list badge). */
+export function recordLhMode(state: LhModeInfo | undefined): { lhMode: string | null; lhPaused: string | null } {
+  const mode = typeof state?.mode === "string" && state.mode && state.mode !== "none" ? state.mode : null;
+  const paused = typeof state?.paused === "string" && state.paused && state.paused !== "none" && state.paused !== mode ? state.paused : null;
+  return { lhMode: mode, lhPaused: paused };
+}
+
+/** UNI-269: long-horizon's command runner behind `set_lh_mode` (packages/long-horizon/src/commands.ts). */
+export const LH_MODE_RUNNER = "unipi:lh-mode";
 /** UNI-118: dream_status pushes coalesce within this window. */
 export const DREAM_COALESCE_MS = 250;
 
@@ -645,6 +655,8 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
 
   // UNI-222: long-horizon progress (sticky LH_PROGRESS on the core bus).
   const lhProgress = (): LhProgressInfo | undefined => bus.get(UNIPI_EVENTS.LH_PROGRESS) as LhProgressInfo | undefined;
+  // UNI-269: the working mode (sticky LH_STATE — the footer's "Graph Mode").
+  const lhMode = (): LhModeInfo | undefined => bus.get(UNIPI_EVENTS.LH_STATE) as LhModeInfo | undefined;
 
   const hello = (): OutMsg => {
     const c = ctx!;
@@ -664,6 +676,7 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
       fusion: fusionPreset(),
       work: workItems(),
       ...(lhProgress() ? { lhProgress: lhProgress() } : {}),
+      ...(lhMode() ? { lhMode: lhMode() } : {}),
       ...(() => {
         const dream = dreamStatus();
         return dream ? { dream } : {};
@@ -751,6 +764,9 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
       // background subagent, a fusion handoff) — the host passes it into
       // chat_list so lists show "Working…" instead of idle/finished.
       pendingWork: currentPendingWork(),
+      // UNI-269: the working mode for the host's chat_list badge (null =
+      // regular / long-horizon not loaded); a parked owner's mode apart.
+      ...recordLhMode(lhMode()),
     };
     try {
       const file = join(dir, `${process.pid}.json`);
@@ -1516,6 +1532,23 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
       case "lh_progress_get":
         write(sock, { t: "lh_progress", progress: lhProgress(), ref: msg.ref });
         return;
+      case "set_lh_mode": {
+        // Through long-horizon's own runner (no hard dependency on the package).
+        try {
+          const out = await callCommandRunner<{ ok: boolean; reason?: string }>(LH_MODE_RUNNER, ctx, { mode: msg.mode });
+          if (!out.found) return fail("Long-horizon modes need a newer unipi on this PC.");
+          if (!out.result?.ok) return fail(out.result?.reason ?? "Could not switch the mode.");
+          ack();
+          // The runner's LH_STATE emit already queued a coalesced push; send
+          // the fresh value now too so the phone's chip settles at once.
+          lastLhMode = JSON.stringify(lhMode() ?? null);
+          writeRecord();
+          send({ t: "lh_mode", mode: lhMode() });
+        } catch (error) {
+          fail(error instanceof Error ? error.message : String(error));
+        }
+        return;
+      }
       case "dream_get":
         write(sock, { t: "dream_status", status: dreamStatus(), ref: msg.ref });
         return;
@@ -1789,6 +1822,23 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
       send({ t: "lh_progress", progress: lhProgress() });
     }, LH_PROGRESS_COALESCE_MS);
     lhTimer.unref?.();
+  });
+
+  // UNI-269: working-mode pushes, coalesced and only on a real change (the
+  // owner lifecycle re-publishes LH_STATE with the same payload often).
+  let lhModeTimer: ReturnType<typeof setTimeout> | undefined;
+  let lastLhMode = JSON.stringify(lhMode() ?? null);
+  bus.on(pi, UNIPI_EVENTS.LH_STATE, () => {
+    if (lhModeTimer) return;
+    lhModeTimer = setTimeout(() => {
+      lhModeTimer = undefined;
+      const now = JSON.stringify(lhMode() ?? null);
+      if (now === lastLhMode) return;
+      lastLhMode = now;
+      writeRecord();
+      send({ t: "lh_mode", mode: lhMode() });
+    }, LH_PROGRESS_COALESCE_MS);
+    lhModeTimer.unref?.();
   });
 
   // UNI-118: Dream status pushes (run started/finished, proposal decided…),

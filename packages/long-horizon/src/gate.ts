@@ -197,6 +197,16 @@ export class Gate {
     if (this.pi) syncModeTools(this.pi, mode);
   }
 
+  /** UNI-269: the app's mode chip picked a work mode with no prompt. Same
+   *  sticky override as setExplicit (the next turn resolves to it, badge and
+   *  all), but the display flips NOW so the footer and the app's chip show
+   *  the pick before any turn runs. */
+  selectMode(mode: LhMode): void {
+    this.setExplicit(mode);
+    this.display = mode;
+    this.deps.onDisplayChanged?.();
+  }
+
   /** Pin the session to a mode (/unipi:regular, goal stop): every later turn resolves to it. */
   setSessionMode(mode: LhMode): void {
     this.sessionOverride = mode;
