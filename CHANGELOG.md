@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.0.0-alpha.37] — 2026-10-11
+
+### Added
+- `/unipi:visualize-progress`: **chart mode.** In terminals that show images (Kitty graphics), the run's steps or swarm are drawn as the same chart the UniPi app shows, above the log, and redrawn live as the run moves. Press `m` to switch between chart and text. Other terminals keep the text view, and the footer says why the chart is off. (UNI-258)
+- `/unipi:doctor` reports whether the Microsoft Visual C++ runtime that web reads need on Windows is installed. (UNI-261)
+
+### Fixed
+- Windows: a missing Visual C++ runtime no longer stops UniPi from loading. Web reads fall back to plain fetch; the README says how to install the runtime. (UNI-261)
+- The updater stays on the release channel you installed from. An alpha install checks for newer alphas, never offers an older version (such as the stable 2.x), installs from the same channel, and shows that channel's changelog. (UNI-262)
+
 ## [3.0.0-alpha.36] — 2026-10-11
 
 ### Added

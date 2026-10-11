@@ -1,6 +1,6 @@
 {
   "name": "@pi-unipi/subagents",
-  "version": "3.0.0-alpha.36",
+  "version": "3.0.0-alpha.37",
   "description": "Subagents for UniPi — Devin-model independent child agents",
   "type": "module",
   "main": "src/index.ts",
@@ -9,8 +9,8 @@
     "test": "npx tsx --test src/__tests__/*.test.ts"
   },
   "dependencies": {
-    "@pi-unipi/core": "3.0.0-alpha.36",
-    "@pi-unipi/utility": "3.0.0-alpha.36",
+    "@pi-unipi/core": "3.0.0-alpha.37",
+    "@pi-unipi/utility": "3.0.0-alpha.37",
     "@earendil-works/pi-agent-core": "^0.87.1",
     "acorn": "8.18.0"
   },
