@@ -32,7 +32,8 @@ export function registerVisualizeProgress(pi: ExtensionAPI): void {
       if (!ctx.hasUI) {
         const p = bus.get(UNIPI_EVENTS.LH_PROGRESS);
         const run = p?.current ?? p?.last;
-        ctx.ui.notify(run ? `${run.mode}: ${run.title} — ${run.counts.done}/${run.counts.total} done (${run.status})` : "No long-horizon mode active.", "info");
+        const sticky = bus.get(UNIPI_EVENTS.LH_STATE)?.mode;
+        ctx.ui.notify(run ? `${run.mode}: ${run.title} — ${run.counts.done}/${run.counts.total} done (${run.status})` : sticky && sticky !== "none" ? `${sticky} mode is on — no run started yet.` : "No long-horizon mode active.", "info");
         return;
       }
       openProgressView(pi, ctx);
@@ -73,7 +74,7 @@ function openProgressView(pi: ExtensionAPI, ctx: ExtensionCommandContext): void 
       return {
         render: (width: number) => {
           const slot = chartState.slot(progress);
-          return renderProgressView(theme as unknown as KitTheme, progress, width, progressViewHeight(progress, width, viewHeight(rows()), !!slot?.active), Date.now(), slot);
+          return renderProgressView(theme as unknown as KitTheme, progress, width, progressViewHeight(progress, width, viewHeight(rows()), !!slot?.active), Date.now(), slot, bus.get(UNIPI_EVENTS.LH_STATE)?.mode);
         },
         invalidate: () => {},
         handleInput: (data: string) => {

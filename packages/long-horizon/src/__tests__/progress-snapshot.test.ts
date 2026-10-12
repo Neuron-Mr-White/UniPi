@@ -211,7 +211,7 @@ test("view: graph draws wave columns, item boxes and dependency arrows", () => {
   assert.match(text, /▶│/, "arrow into the dependent box");
   assert.match(text, /a done/, "log line from the same state");
   assert.match(text, /Graph · running/);
-  assert.match(text, /1\/3 done · 1 running · 1 waiting/);
+  assert.match(text, /1 of 3 done · 1 running · 1 waiting/);
 });
 
 test("view: running item spins (frame differs over time), settled items don't", () => {
@@ -241,7 +241,7 @@ test("view: ralph checklist + iteration bar; goal % bar + turns + estimate", () 
     now: 0,
   });
   const r = renderProgressView(plain, ralph, 80, progressViewHeight(ralph, 80, 40), 0).join("\n");
-  assert.match(r, /iteration .* 2\/5/);
+  assert.match(r, /iteration 2 of 5  ·  1 of 2 checked/);
   assert.match(r, /✓ {2}Write intro/);
   const goal = lhProgressSnapshot({
     owner: { kind: "goal", label: "Ship", status: "active" },
@@ -251,8 +251,8 @@ test("view: ralph checklist + iteration bar; goal % bar + turns + estimate", () 
   });
   const g = renderProgressView(plain, goal, 80, progressViewHeight(goal, 80, 40), 30_000).join("\n");
   assert.match(g, /~55%/);
-  assert.match(g, /turns .* 4\/30/);
-  assert.match(g, /latest estimate · 30s ago/);
+  assert.match(g, /turn 4 of 30/);
+  assert.match(g, /\(30s ago\)/);
   assert.match(g, /Parser done; tests left\./);
 });
 

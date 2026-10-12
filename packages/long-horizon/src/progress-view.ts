@@ -21,7 +21,7 @@ import type { ThemeColor } from "@earendil-works/pi-coding-agent";
 import { visibleWidth } from "@earendil-works/pi-tui";
 
 export const FLASH_MS = 2400;
-export const LOG_ROWS = 6;
+export const LOG_ROWS = 3;
 
 const MODE_TITLE: Record<LhProgressRun["mode"], string> = { goal: "Goal", ralph: "Ralph", swarm: "Swarm", graph: "Graph" };
 const MODE_ICON: Record<LhProgressRun["mode"], string> = { goal: "◎", ralph: "↻", swarm: "⁂", graph: "⋔" };
@@ -207,12 +207,13 @@ function drawBox(b: BodyCtx, item: LhProgressItem, x: number, y: number, w: numb
   c.put(x + w - 1, statusRow, "│", border);
   if (item.status === "running" && b.live) c.raw(x + 1, statusRow, itemSpinner(t, item.id, b.now), 2);
   else c.put(x + 1, statusRow, `${item.status === "running" ? "◌" : ITEM_GLYPH[item.status as Exclude<LhProgressItem["status"], "running">]} `, color, true);
-  const word = item.status + ((item.attempts ?? 0) > 1 ? ` ×${item.attempts}` : "") + (flash ? " ◂" : "");
-  c.put(x + 4, statusRow, fit(word, inner - 3), color, flash);
+  // The glyph + colour carry the status; the row is the label (a word only where the glyph can't say it).
+  const note = (item.status === "failed" || item.status === "aborted" ? `${item.status} ` : "") + ((item.attempts ?? 0) > 1 ? `×${item.attempts} ` : "");
+  const label = note + item.label;
+  c.put(x + 4, statusRow, fit(label, inner - 3), item.status === "queued" ? "dim" : item.status === "running" || flash ? "text" : "muted", flash);
   if (rows === 4) {
     c.put(x, y + 2, "│", border);
     c.put(x + w - 1, y + 2, "│", border);
-    c.put(x + 2, y + 2, fit(item.label, inner - 2), item.status === "queued" ? "dim" : "muted");
   }
   const bottom = y + rows - 1;
   c.put(x, bottom, "└", border);
@@ -248,10 +249,9 @@ function renderGraph(b: BodyCtx, run: LhProgressRun): void {
   const tallest = Math.max(1, ...waves.slice(0, shown).map((w) => byWave.get(w)!.length));
   // Box rows: 4 with a label when they fit, else 3; one gap row between boxes when room allows.
   const avail = b.h - 1; // row 0 = wave headers
-  let rows: 3 | 4 = 4;
+  const rows: 3 | 4 = 3;
   let gap = 1;
-  if (tallest * 5 - 1 > avail) gap = 0;
-  if (tallest * (4 + gap) - gap > avail) rows = 3;
+  if (tallest * 4 - 1 > avail) gap = 0;
   const per = rows + gap;
   const capacity = Math.max(1, Math.floor((avail + gap) / per));
 
@@ -325,8 +325,8 @@ function renderSwarm(b: BodyCtx, run: LhProgressRun): void {
   const boxW = Math.max(14, Math.min(28, Math.floor((b.w + 2) / Math.max(1, Math.min(run.items.length, Math.floor((b.w + 2) / 18))))) - 2);
   const cols = Math.max(1, Math.floor((b.w + 2) / (boxW + 2)));
   const gridRows = Math.ceil(run.items.length / cols);
-  let rows: 3 | 4 = 4;
-  if (gridRows * 4 > b.h) rows = 3;
+  const rows: 3 | 4 = 3;
+  void gridRows;
   const capacity = Math.max(1, Math.floor(b.h / rows)) * cols;
   const visible = run.items.length > capacity ? run.items.slice(0, capacity - 1) : run.items;
   visible.forEach((item, k) => {
@@ -343,16 +343,7 @@ function renderSwarm(b: BodyCtx, run: LhProgressRun): void {
 
 function renderRalph(b: BodyCtx, run: LhProgressRun): void {
   const { c, t } = b;
-  const r = run.ralph;
-  let y = b.y;
-  if (r) {
-    const max = r.maxIterations > 0 ? r.maxIterations : Math.max(r.iteration, 1);
-    const barW = Math.max(10, Math.min(30, b.w - 34));
-    c.put(b.x, y, "iteration", "muted");
-    c.raw(b.x + 10, y, progressBar(t, r.iteration - (b.live ? 1 : 0), b.live ? 1 : 0, max, barW, RUN_COLOR[run.status]), barW);
-    c.put(b.x + 11 + barW, y, `${r.iteration}${r.maxIterations > 0 ? `/${r.maxIterations}` : ""}`, "text", true);
-    y += 2;
-  }
+  const y = b.y;
   const rows = b.h - (y - b.y);
   const items = run.items;
   // Keep the working rows in view: start the window just above the first unchecked row.
@@ -391,38 +382,30 @@ function wrap(text: string, width: number, maxLines: number): string[] {
   return lines.map((l) => fit(l, width));
 }
 
+/** Goal: one bar (estimated %, turns as text beside it) and the latest estimate. The objective is the header title. */
 function renderGoal(b: BodyCtx, run: LhProgressRun): void {
   const { c, t } = b;
   const g = run.goal;
-  let y = b.y;
-  c.put(b.x, y, "objective", "muted");
-  y += 1;
-  for (const line of wrap(g?.objective ?? run.title, b.w - 2, 3)) c.put(b.x + 2, y++, line, "text");
-  y += 1;
-  if (g) {
-    const barW = Math.max(10, Math.min(40, b.w - 22));
-    const pct = g.percent;
-    c.put(b.x, y, "progress", "muted");
-    if (pct === undefined) {
-      c.raw(b.x + 10, y, progressBar(t, 0, b.live ? 1 : 0, 100, barW), barW);
-      c.put(b.x + 11 + barW, y, "estimating…", "dim");
-    } else {
-      c.raw(b.x + 10, y, progressBar(t, pct, b.live ? Math.max(1, Math.min(10, 100 - pct)) : 0, 100, barW, RUN_COLOR[run.status]), barW);
-      c.put(b.x + 11 + barW, y, `${g.status === "complete" ? "" : "~"}${pct}%`, "text", true);
-    }
-    y += 1;
-    const turnW = Math.max(10, Math.min(40, b.w - 22));
-    c.put(b.x, y, "turns", "muted");
-    c.raw(b.x + 10, y, progressBar(t, g.turn, 0, Math.max(1, g.maxTurns), turnW, "muted"), turnW);
-    c.put(b.x + 11 + turnW, y, `${g.turn}/${g.maxTurns}`, "text");
-    y += 2;
-    if (g.summary) {
-      c.put(b.x, y, `latest estimate${g.estimatedAt !== undefined ? ` · ${ago(b.now - g.estimatedAt)}` : ""}`, "muted");
-      y += 1;
-      for (const line of wrap(g.summary, b.w - 2, Math.max(1, b.h - (y - b.y)))) c.put(b.x + 2, y++, line, "text");
-    } else {
-      c.put(b.x, y, "No estimate yet — /unipi:goal status asks for one.", "dim");
-    }
+  if (!g) {
+    c.put(b.x, b.y, "Goal details aren't available.", "dim");
+    return;
+  }
+  const y = b.y;
+  const barW = Math.max(10, Math.min(36, b.w - 30));
+  const pct = g.percent;
+  if (pct === undefined) c.raw(b.x, y, progressBar(t, 0, b.live ? 1 : 0, 100, barW), barW);
+  else c.raw(b.x, y, progressBar(t, pct, b.live ? Math.max(1, Math.min(10, 100 - pct)) : 0, 100, barW, RUN_COLOR[run.status]), barW);
+  let cx = b.x + barW + 2;
+  const pctText = pct === undefined ? "not estimated" : `${g.status === "complete" ? "" : "~"}${pct}%`;
+  c.put(cx, y, pctText, pct === undefined ? "dim" : "text", pct !== undefined);
+  cx += pctText.length;
+  c.put(cx, y, fit(`  ·  turn ${g.turn} of ${g.maxTurns}`, Math.max(0, b.x + b.w - cx)), "muted");
+  const rows = Math.max(1, b.h - 2);
+  if (g.summary) {
+    const when = g.estimatedAt !== undefined ? ` (${ago(b.now - g.estimatedAt)})` : "";
+    wrap(`${g.summary}${when}`, b.w, rows).forEach((line, i) => c.put(b.x, y + 2 + i, line, "muted"));
+  } else {
+    c.put(b.x, y + 2, fit("No estimate yet — /unipi:goal status asks for one.", b.w), "dim");
   }
 }
 
@@ -435,6 +418,12 @@ function renderRunBody(b: BodyCtx, run: LhProgressRun): void {
   else b.c.put(b.x, b.y, run.mode === "graph" ? "Graph not declared yet — waiting for update_agent_graph." : "No items declared yet — waiting for the plan.", "dim");
 }
 
+function goalStatusText(status: string): string {
+  if (status === "complete") return "complete";
+  if (status === "active") return "working toward the objective";
+  return status.replace(/_/g, " ");
+}
+
 // ── frame ───────────────────────────────────────────────────────────────────
 
 /** Body rows a run wants, from its STRUCTURE only (item count, waves) — never from state, so the frame doesn't jump while it runs. */
@@ -443,15 +432,16 @@ function bodyRows(run: LhProgressRun | undefined, inner: number): number {
   if (run.mode === "graph" && run.items.length) {
     const perWave = new Map<number, number>();
     for (const item of run.items) perWave.set(item.wave ?? 0, (perWave.get(item.wave ?? 0) ?? 0) + 1);
-    return 1 + Math.max(1, ...perWave.values()) * 5;
+    return Math.max(1, ...perWave.values()) * 4;
   }
   if (run.mode === "swarm" && run.items.length) {
     const boxW = Math.max(14, Math.min(28, Math.floor((inner + 2) / Math.max(1, Math.min(run.items.length, Math.floor((inner + 2) / 18))))) - 2);
     const cols = Math.max(1, Math.floor((inner + 2) / (boxW + 2)));
-    return Math.ceil(run.items.length / cols) * 4;
+    return Math.ceil(run.items.length / cols) * 3;
   }
-  if (run.mode === "ralph") return 2 + Math.max(1, run.items.length);
-  if (run.mode === "goal") return 12;
+  if (run.mode === "ralph") return Math.max(1, run.items.length);
+  // Fixed (bar, gap, 3 estimate lines) — never sized from the estimate text, so the frame doesn't jump.
+  if (run.mode === "goal") return 5;
   return 2;
 }
 
@@ -460,9 +450,9 @@ export function progressViewHeight(progress: LhProgressEvent | undefined, width:
   const run = progress?.current ?? progress?.last;
   if (chart && run) return Math.max(Math.min(8, maxHeight), maxHeight);
   const W = Math.max(30, width);
-  // border 2 + header (title, counts, gap; +1 idle line) + body + log sep + log + footer
+  // border 2 + header (title, summary line, gap; +1 idle line) + body + gap + log label + log + footer
   const header = run ? (progress?.current ? 3 : 4) : 0;
-  const want = run ? 2 + header + bodyRows(run, W - 4) + 1 + LOG_ROWS + 1 : 6;
+  const want = run ? 2 + header + bodyRows(run, W - 4) + 2 + LOG_ROWS + 1 : 6;
   return Math.max(Math.min(8, maxHeight), Math.min(maxHeight, want));
 }
 
@@ -482,7 +472,7 @@ export interface ProgressChartSlot {
  * The whole view, exactly `height` lines of exactly `width` cells (inside its
  * own rounded border). `progress` undefined = nothing published yet.
  */
-export function renderProgressView(t: KitTheme, progress: LhProgressEvent | undefined, width: number, height: number, now: number, chart?: ProgressChartSlot): string[] {
+export function renderProgressView(t: KitTheme, progress: LhProgressEvent | undefined, width: number, height: number, now: number, chart?: ProgressChartSlot, workingMode?: string): string[] {
   const W = Math.max(30, width);
   const H = Math.max(8, height);
   const c = new Canvas(W, H);
@@ -502,20 +492,24 @@ export function renderProgressView(t: KitTheme, progress: LhProgressEvent | unde
   c.put(0, H - 1, "╰", frameColor);
   for (let k = 1; k < W - 1; k++) c.put(k, H - 1, "─", frameColor);
   c.put(W - 1, H - 1, "╯", frameColor);
-  c.put(2, 0, " ◆ Long-horizon progress ", "accent", true);
-  if (run) {
-    const tag = ` ${MODE_ICON[run.mode]} ${MODE_TITLE[run.mode]} · ${progress?.current ? run.status : `last run · ${run.status}`} `;
-    c.put(W - 2 - tag.length, 0, tag, RUN_COLOR[run.status], true);
-  }
+  const tag = run ? ` ${MODE_ICON[run.mode]} ${MODE_TITLE[run.mode]} · ${progress?.current ? run.status : `last run · ${run.status}`} ` : " Progress ";
+  c.put(2, 0, fit(tag, W - 4), run ? RUN_COLOR[run.status] : "accent", true);
 
   const x = 2;
-  const logTop = H - 2 - LOG_ROWS - 1; // separator row
+  const logTop = H - 2 - LOG_ROWS - 1; // the "recent" label row
   const footer = H - 2;
 
+  const sticky = workingMode && workingMode in MODE_TITLE ? (workingMode as LhProgressRun["mode"]) : undefined;
   if (!run) {
-    c.put(x, 2, "No long-horizon mode active", "text", true);
-    c.put(x, 3, fit("Start one with /unipi:goal, /unipi:ralph, /unipi:swarm or /unipi:graph — this view follows it live.", inner), "muted");
-    c.put(x, footer, fit("Esc / q close", inner), "dim");
+    if (sticky) {
+      // The footer says "<Mode> mode" but the agent hasn't started a run yet (UNI-274).
+      c.put(x, 2, `${MODE_TITLE[sticky]} mode is on`, "text", true);
+      c.put(x, 3, fit(`Nothing to show until the agent starts a ${MODE_TITLE[sticky].toLowerCase()} — this view follows it live.`, inner), "muted");
+    } else {
+      c.put(x, 2, "No long-horizon mode active", "text", true);
+      c.put(x, 3, fit("Start one with /unipi:goal, /unipi:ralph, /unipi:swarm or /unipi:graph — this view follows it live.", inner), "muted");
+    }
+    c.put(x, footer, fit("Esc close", inner), "dim");
     return c.serialize(t);
   }
 
@@ -530,20 +524,24 @@ export function renderProgressView(t: KitTheme, progress: LhProgressEvent | unde
   c.put(x, y, fit(run.title, inner), "text", true);
   y += 1;
   const k = run.counts;
-  if (k.total > 0) {
-    const barW = Math.max(10, Math.min(36, inner - 46));
+  if (run.mode === "goal") {
+    // The body is the bar; the header line says where the goal stands.
+    c.put(x, y, fit(run.goal ? goalStatusText(run.goal.status) : run.status, inner), "muted");
+  } else if (run.mode === "ralph" && run.ralph) {
+    const r = run.ralph;
+    c.put(x, y, fit(`iteration ${r.iteration}${r.maxIterations > 0 ? ` of ${r.maxIterations}` : ""}  ·  ${r.checked} of ${r.total} checked`, inner), "muted");
+  } else if (k.total > 0) {
+    const barW = Math.max(10, Math.min(24, inner - 46));
     c.raw(x, y, progressBar(t, k.done, live ? k.running : 0, k.total, barW, RUN_COLOR[run.status]), barW);
     let cx = x + barW + 2;
     const seg = (text: string, color: ThemeColor, bold = false) => {
-      c.put(cx, y, text, color, bold);
+      c.put(cx, y, fit(text, Math.max(0, x + inner - cx)), color, bold);
       cx += text.length;
     };
-    seg(`${k.done}/${k.total} done`, "text", true);
+    seg(`${k.done} of ${k.total} done`, "text", true);
     if (k.running) seg(` · ${k.running} running`, "accent");
     if (k.failed) seg(` · ${k.failed} failed`, "error");
     if (k.queued) seg(` · ${k.queued} waiting`, "dim");
-  } else if (run.mode === "goal" && run.goal) {
-    c.put(x, y, fit(`${run.goal.status} · turn ${run.goal.turn}/${run.goal.maxTurns}`, inner), "muted");
   }
   y += 2;
 
@@ -561,25 +559,24 @@ export function renderProgressView(t: KitTheme, progress: LhProgressEvent | unde
     renderRunBody({ t, c, x, y, w: inner, h: logTop - y, now, live, flashes }, run);
   }
 
-  // Log (medium tempo): newest bright, older dim.
-  c.put(x, logTop, "log ", "muted", true);
-  for (let kk = x + 4; kk < W - 2; kk++) c.put(kk, logTop, "─", "borderMuted");
-  const log = (progress?.log ?? []).slice(-LOG_ROWS);
+  // Log (medium tempo): a quiet "recent" label, newest line first and bright, older dim.
+  const log = (progress?.log ?? []).slice(-LOG_ROWS).reverse();
+  c.put(x, logTop, "recent", "dim");
   log.forEach((line, i) => {
-    const newest = i === log.length - 1;
-    const yy = logTop + 1 + (LOG_ROWS - log.length) + i;
-    c.put(x, yy, clock(line.at), newest ? "muted" : "dim");
+    const newest = i === 0;
+    const yy = logTop + 1 + i;
+    c.put(x, yy, clock(line.at).slice(0, 5), "dim");
     const color: ThemeColor = !newest ? "dim" : line.status && line.status in ITEM_COLOR ? ITEM_COLOR[line.status as LhProgressItem["status"]] : line.status ? RUN_COLOR[line.status as LhProgressRun["status"]] : "text";
-    c.put(x + 9, yy, fit(line.text, inner - 9), color, newest);
+    c.put(x + 7, yy, fit(line.text, inner - 7), color);
   });
-  if (!log.length) c.put(x, logTop + LOG_ROWS, "waiting for the first state change…", "dim");
+  if (!log.length) c.put(x, logTop + 1, "nothing yet", "dim");
 
   const updated = progress ? `updated ${ago(now - progress.updatedAt)}` : "";
-  c.put(x, footer, "Esc / q close", "dim");
+  c.put(x, footer, "Esc close", "dim");
   c.put(W - 2 - updated.length, footer, updated, "dim");
-  if (live) c.put(x + 15, footer, "● live", "accent");
+  if (live) c.put(x + 11, footer, "● live", "accent");
   if (chart?.hint) {
-    const hx = x + 15 + (live ? 8 : 0);
+    const hx = x + 11 + (live ? 8 : 0);
     c.put(hx, footer, fit(chart.hint, Math.max(0, W - 2 - updated.length - 2 - hx)), "dim");
   }
   return c.serialize(t);
