@@ -31,6 +31,9 @@ export interface ProgressHooks {
   ralphBar(): ProgressData | undefined;
   estimateGoal(ctx: ExtensionCommandContext): Promise<"ok" | "none" | "failed">;
   goalEstimateOn(): boolean;
+  /** UNI-281: graph/swarm status line + past runs (Maka /graph history). */
+  graphStatus?(): string | undefined;
+  graphHistory?(): string;
 }
 
 export interface LongHorizonCommandDeps {
@@ -100,8 +103,8 @@ function ownerSnapshotText(owner: OwnerCoordinator): string {
 const MODE_DESCRIPTIONS = {
   goal: "One objective until verifiably true. Use: medium-complex single deliverables. Cost/success: pareto per success. (<prompt> | status | stop | resume | clear)",
   ralph: "Checklist grind over iterations. Use: enumerable chores, repo-scale plans. Cost/success: low cost, solid success. (start <name> | stop | status | resume | clear | <prompt>)",
-  swarm: "Parallel fan-out + one synthesis. Use: complex decomposable work. Cost/success: higher cost, high coverage. (<prompt> | status | stop | resume | clear)",
-  graph: "Dependent multi-step work. Use: later steps need earlier results. Cost/success: highest; run when the shape demands it. (<prompt> | status | stop | resume | clear)",
+  swarm: "Parallel fan-out + one synthesis on the agent graph. Use: complex decomposable work. Cost/success: higher cost, high coverage. (<prompt> | status | history | stop | resume | clear)",
+  graph: "Dependent multi-step work on the durable agent graph. Use: later steps need earlier results. Cost/success: highest; run when the shape demands it. (<prompt> | status | history | stop | resume | clear)",
 } as const;
 
 interface CompletionItem {
@@ -123,6 +126,13 @@ const goalCompletions = (prefix: string): CompletionItem[] => {
     return [{ value: "", label: "<prompt>", description: "run one turn in this mode" }, ...subs];
   }
   return hits;
+};
+
+/** Graph/swarm: the goal subcommands + history (Maka /graph history). */
+const graphCompletions = (prefix: string): CompletionItem[] => {
+  const history: CompletionItem = { value: "history", label: "history", description: "past agent graphs and their selected results" };
+  if (prefix.length === 0) return [...goalCompletions(prefix), history];
+  return [...goalCompletions(prefix), ...(history.value.startsWith(prefix) ? [history] : [])];
 };
 
 const ralphCompletions = (prefix: string): CompletionItem[] => {
@@ -229,12 +239,18 @@ export function registerLongHorizonCommands(
       return;
     }
 
+    if ((mode === "graph" || mode === "swarm") && sub === "history" && parts.length === 1) {
+      notify(ctx, progressHooks?.graphHistory?.() ?? "No agent graph history.");
+      return;
+    }
+
     if (sub === "status" || (sub === "" && parts.length <= 1)) {
       const current = gate.current();
       const settings = loadSettings();
       notify(
         ctx,
         `Mode command: ${definition.label}\nLast resolved: ${current ? `${current.mode} (${current.source})` : "none yet"}\n${ownerSnapshotText(owner)}` +
+          ((mode === "graph" || mode === "swarm") && progressHooks?.graphStatus?.() ? `\n${progressHooks.graphStatus()}` : "") +
           `\nJudge: ${settings.judge.enabled ? `${settings.judge.provider}/${settings.judge.model} (threshold ${settings.judge.threshold})` : "off"} — default mode: ${settings.defaultMode}` +
           `\nSettings: ~/.pi/agent/settings.json → unipi.longHorizon`,
       );
@@ -342,8 +358,8 @@ export function registerLongHorizonCommands(
 
   pi.registerCommand("unipi:goal", { description: MODE_DESCRIPTIONS.goal, getArgumentCompletions: goalCompletions, handler: modeHandler("goal") });
   pi.registerCommand("unipi:ralph", { description: MODE_DESCRIPTIONS.ralph, getArgumentCompletions: ralphCompletions, handler: modeHandler("ralph") });
-  pi.registerCommand("unipi:swarm", { description: MODE_DESCRIPTIONS.swarm, getArgumentCompletions: goalCompletions, handler: modeHandler("swarm") });
-  pi.registerCommand("unipi:graph", { description: MODE_DESCRIPTIONS.graph, getArgumentCompletions: goalCompletions, handler: modeHandler("graph") });
+  pi.registerCommand("unipi:swarm", { description: MODE_DESCRIPTIONS.swarm, getArgumentCompletions: graphCompletions, handler: modeHandler("swarm") });
+  pi.registerCommand("unipi:graph", { description: MODE_DESCRIPTIONS.graph, getArgumentCompletions: graphCompletions, handler: modeHandler("graph") });
   pi.registerCommand("unipi:regular", {
     description: "Regular mode — stop any active owner and run prompts without long-horizon routing",
     handler: async (_args: string, ctx: ExtensionCommandContext): Promise<void> => {

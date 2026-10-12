@@ -349,3 +349,21 @@ test("shutdown freezes: late cancellations don't settle; the next bind resumes t
   assert.equal(again.resumeOperatorId, "op1");
   rmSync(r.dir, { recursive: true, force: true });
 });
+
+test("swarm wake rule (Maka): first settled, or the attention set changes; no quiescent wake", () => {
+  const r = rig();
+  r.engine.update({ mode: "swarm", task: "review", addWork: [{ workId: "a", instruction: "a" }, { workId: "b", instruction: "b" }, { workId: "c", instruction: "c" }] });
+  r.complete("a");
+  assert.equal(r.checkpoints.length, 0, "a completion alone does not wake a swarm");
+  r.complete("b", "boom", "failed");
+  assert.equal(r.checkpoints.at(-1)?.kind, "needs_attention");
+  assert.equal(r.checkpoints.length, 1);
+  r.engine.update({ mode: "swarm", addWork: [{ workId: "b2", instruction: "b again", replaces: "b" }] });
+  assert.equal(r.checkpoints.length, 1, "attention shrinking does not wake");
+  r.complete("b2");
+  assert.equal(r.checkpoints.length, 1);
+  r.complete("c");
+  assert.equal(r.checkpoints.at(-1)?.kind, "settled");
+  assert.equal(r.checkpoints.length, 2);
+  rmSync(r.dir, { recursive: true, force: true });
+});

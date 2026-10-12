@@ -24,7 +24,7 @@ import { NudgeStash, nextStashMetaState, ownerEventClearsStash, type StashMetaSt
 import { RalphLoop } from "./src/engine/ralph.js";
 import { registerRalphTools } from "./src/tools/ralph.js";
 import { registerGraphTools } from "./src/tools/graph.js";
-import { GraphEngine, type GraphMode } from "./src/graph/engine.js";
+import { countStatuses, GraphEngine, type GraphMode } from "./src/graph/engine.js";
 import { graphRunnerFromPort, readGraphRunPort } from "./src/graph/runner.js";
 import { TodoStore, registerTodoTool } from "./src/tools/todo.js";
 import { wireRuntime } from "./src/runtime.js";
@@ -512,6 +512,25 @@ export default function longHorizon(pi: ExtensionAPI): void {
     ralphBar: () => ralphProgressData(ralph),
     estimateGoal: (ctx) => runtime.estimateGoal(ctx),
     goalEstimateOn: () => loadSettings().goalProgress !== "off",
+    graphStatus: () => {
+      const graph = graphEngine.current();
+      if (!graph) return undefined;
+      const counts = Object.entries(countStatuses(graph, (work) => graphEngine.viewStatus(graph, work))).filter(([, n]) => n > 0).map(([s, n]) => `${n} ${s}`).join(", ");
+      const state = graph.finish ? "finished" : graph.abandoned ? `stopped (${graph.abandoned.reason})` : "open";
+      return `Agent ${graph.mode} ${graph.graphId} "${graph.task}" — ${state}: ${counts || "no work"}`;
+    },
+    graphHistory: () => {
+      const all = [graphEngine.current(), ...graphEngine.history()].filter((g): g is NonNullable<typeof g> => g !== undefined);
+      if (all.length === 0) return "No agent graphs in this project yet.";
+      return all
+        .slice(0, 10)
+        .map((g) => {
+          const done = g.work.filter((w) => w.status === "completed").length;
+          const state = g.finish ? `finished → ${g.finish.resultIds.join(", ")}` : g.abandoned ? `stopped (${g.abandoned.reason})` : "open";
+          return `${new Date(g.createdAt).toLocaleString()}  ${g.mode} ${g.graphId}  "${g.task}"  ${done}/${g.work.length} done · ${state}`;
+        })
+        .join("\n");
+    },
   }, machine, toolset);
 
   // Crash recovery: repair, don't resume — reload durable state so the gate

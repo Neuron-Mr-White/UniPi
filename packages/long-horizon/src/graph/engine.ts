@@ -862,15 +862,19 @@ export class GraphEngine {
     const statuses = graph.work.map((work) => ({ work, status: this.viewStatus(graph, work) }));
     // Maka: blocked is not terminal — a blocked item keeps the graph unsettled.
     const live = statuses.filter(({ status }) => status === "queued" || status === "running" || status === "blocked");
-    const attention = statuses.filter(({ status }) => status === "failed" || status === "blocked").map(({ work }) => work.workId);
+    // Swarm (Maka isSwarmCheckpointTransition): first settled, or the set of
+    // blocked/failed/aborted/cancelled items changes. Graph adds a quiescent
+    // wake (nothing running or runnable while work remains queued).
+    const attentionStatuses: ReadonlySet<WorkViewStatus> = graph.mode === "swarm" ? new Set(["failed", "blocked", "cancelled"]) : new Set(["failed", "blocked"]);
+    const attention = statuses.filter(({ status }) => attentionStatuses.has(status)).map(({ work }) => work.workId);
     const attentionKey = new Set(attention);
-    const attentionChanged = attention.some((id) => !this.reportedAttention.has(id));
+    const attentionChanged = attention.length !== this.reportedAttention.size || attention.some((id) => !this.reportedAttention.has(id));
     const running = statuses.some(({ status }) => status === "running");
     const runnable = statuses.some(({ work, status }) => status === "queued" && this.inputState(graph, work).state === "ready");
     let kind: Checkpoint["kind"] | undefined;
     if (live.length === 0) kind = "settled";
-    else if (attentionChanged) kind = "needs_attention";
-    else if (!running && !runnable) kind = "quiescent";
+    else if (attentionChanged && attention.length > 0) kind = "needs_attention";
+    else if (graph.mode === "graph" && !running && !runnable) kind = "quiescent";
     if (!kind) return undefined;
     this.reportedAttention = attentionKey;
     return { graphId: graph.graphId, kind, attention, text: this.checkpointText(graph, kind, attention) };
