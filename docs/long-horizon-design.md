@@ -1,5 +1,13 @@
 # long-horizon design (v3)
 
+> **2026-10-13 (UNI-279..284):** graph and swarm were rebuilt on Maka's agent
+> graph — host-run steps (subagents), durable JSON graph with history and
+> restart resume, `update_agent_graph` add_work/stop/finish, `yield_agent_graph`,
+> `agent_output`, `agent_swarm_status`; the swarm ledger, `swarm_*` tools and
+> `graph_output` are gone. Goal gained a durable continuation outbox and Maka's
+> task gate. The current behaviour is in `docs/architecture/long-horizon.md`;
+> the sections below are the original v3 design and describe the old swarm/graph.
+
 Status: draft for review. Builds on `docs/long-horizon-study.md` (mechanisms) and the v3 task plan.
 Decisions locked by user: **mcode's goal (propose+verify) · Maka's swarm + graph · our /ralph kept ·
 mode-gated tool exposure via a prompt judge (TypeSafe jev-1.13)**.

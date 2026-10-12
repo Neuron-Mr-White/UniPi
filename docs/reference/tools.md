@@ -74,12 +74,11 @@ sees none of these tools.
 | `update_goal` | goal | Proposes the goal as complete or blocked, or changes the token budget. | `mode` (`status` or `token_budget`), `status?`, `summary?`, `token_budget?` |
 | `ralph_done` | ralph | Ends the current iteration. It checks the task file. | none |
 | `loop_status` | ralph | Reads the loop state and the task-file progress. | none |
-| `swarm_report` | swarm | Records the outcome of one swarm item. | `item_id`, `status`, `summary?`, `dispatched?` |
-| `swarm_status` | swarm | Shows the status of each swarm item. | none |
-| `swarm_yield` | swarm | Ends the supervisor turn while items run. | none |
-| `update_agent_graph` | graph | Declares the work graph one time. | `task`, `items[]`: `item_id`, `instruction`, `depends_on?` |
-| `graph_output` | graph | Records the outcome of one graph item. | `item_id`, `status`, `summary?`, `dispatched?` |
-| `view_agent_graph` | graph | Shows the waves, the item status and the open count. | none |
+| `update_agent_graph` | graph, swarm | Adds work, stops work, or finishes the agent graph. The host runs each step as a subagent. | `operation` (`add_work`, `stop`, `finish`), `task?`, `add_work[]`: `work_id?`, `instruction`, `profile?`, `input_ids?`, `operator_id?`, `replaces?`, `selected_result_inputs?`; `stop[]`: `target_id`, `reason`; `finish`: `result_ids`, `reason` |
+| `view_agent_graph` | graph, swarm | Shows the graph: step status, waits, operators, result ids, and past graphs. | `graph_id?`, `history?` |
+| `yield_agent_graph` | graph, swarm | Ends the supervisor turn while steps run. The host wakes the agent at the next checkpoint. | `reason?` |
+| `agent_output` | graph, swarm | Reads one step's committed result, failure or partial output. | `id` (result id `r-<work_id>` or work id), `graph_id?`, `max_bytes?` |
+| `agent_swarm_status` | graph, swarm | Shows each item's status and result id, and running, needs_attention or settled. | none |
 | `todowrite` | goal, ralph, swarm, graph | Replaces the visible task list of the session. | `todos[]`: `content`, `status`, `priority` |
 
 An independent verifier checks a goal or a ralph loop before it completes.

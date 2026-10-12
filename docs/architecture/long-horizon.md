@@ -18,8 +18,12 @@ decides when a goal is complete.
 |---|---|---|---|
 | `goal` | One objective until a verifier finds it met | `create_goal`, `get_goal`, `update_goal`, `todowrite` | `goal` |
 | `ralph` | A task file worked over many iterations | `ralph_done`, `loop_status`, `todowrite` | `ralph-loop` |
-| `swarm` | Independent items, parallel workers, then a synthesis | `swarm_status`, `swarm_yield`, `swarm_report`, `todowrite` | `swarm` |
-| `graph` | Steps that depend on earlier results | `view_agent_graph`, `update_agent_graph`, `graph_output`, `todowrite` | `graph` |
+| `swarm` | Independent items, parallel workers, then a synthesis | `update_agent_graph`, `yield_agent_graph`, `agent_swarm_status`, `agent_output`, `view_agent_graph`, `todowrite` | `swarm` |
+| `graph` | Steps that depend on earlier results | `view_agent_graph`, `update_agent_graph`, `yield_agent_graph`, `agent_output`, `agent_swarm_status`, `todowrite` | `graph` |
+
+Graph and swarm share one engine, the **agent graph** (below). They differ
+only in the prompt and the wake rule, as in Maka (`docs/agent-swarm.md` in
+the Maka repo).
 | `none` | A plain request | none | none |
 
 ```mermaid
@@ -83,11 +87,69 @@ Before the model call, core's evidence contributors run. Kanboard adds a
 blocking item for each task this session still holds In Progress. A blocking
 item gives `not_met` without a model call.
 
+### The agent graph (graph and swarm)
+
+The model records schedule **intent**; the host runs the work. This is Maka's
+agent graph (`agent-graph-stream-scheduling-draft.md`), sized for UniPi:
+
+- `update_agent_graph{operation}`:
+  - `add_work`: bounded, self-contained instructions with a `work_id`, a
+    subagent `profile`, and `input_ids`. An input id is a work id or a
+    result id (`r-<work_id>`) of this graph. Work waits until its inputs
+    complete, so a whole DAG can be declared at once.
+  - `stop`: queued work is cancelled; running work is stopped and its child
+    cancelled.
+  - `finish`: selects committed result ids. It is the only way a graph
+    closes ("nothing runnable" is not "done").
+  - Also: `replaces` (supersede failed work; dependents follow the chain),
+    `operator_id` (follow-up work that resumes an existing child's session),
+    and `selected_result_inputs` (results chosen by a finished earlier
+    graph). `operation` is inferred when the model omits it.
+- `view_agent_graph`, `agent_output` (a step's full committed result),
+  `agent_swarm_status` (Maka's compact projection: per-item status +
+  running / needs_attention / settled).
+- `yield_agent_graph` ends the supervisor turn (`terminate`). The host wakes
+  the agent once per durable checkpoint (one aggregated message):
+  - graph: everything settled, the attention set (failed / blocked) changed,
+    or nothing is running or runnable;
+  - swarm (Maka `isSwarmCheckpointTransition`): first settled, or the
+    blocked / failed / cancelled set changed.
+- **Execution.** Each runnable step starts as a background subagent
+  through the subagents package's graph run port (`Symbol.for` handshake,
+  no hard dependency). A step's final report is its committed result. The
+  child gets Maka's operator handoff protocol, plus upstream conclusions
+  capped at 16 KB each and 48 KB total. Steps refused for capacity stay
+  queued and retry.
+- **Durable.** The graph lives in
+  `~/.unipi/workspace/<id>/state/long-horizon/graph.json` (current graph +
+  20 past ones), rewritten atomically on every change.
+  - On `session_shutdown` the graph is frozen before subagents cancels its
+    children.
+  - On the next `session_start`, each interrupted step resumes once in its
+    own subagent session; a second interruption fails it.
+  - Child agents never bind the graph.
+- `/unipi:graph history` (and `/unipi:swarm history`) lists past graphs. The
+  TUI view and the app's Progress sheet read the same graph, so finished runs
+  keep their chart; the app adds step output, step sessions, Stop and a run
+  picker (`unipi-app/docs/m5/PROTOCOL.md` §7.2).
+
 ### Continuation and the runaway guard
 
 After each turn, the owner settles: continue, wait, pause or stop. A
 continuation goes into the one-slot nudge stash. The
-[turn arbiter](turn-arbiter.md) delivers it at priority 100.
+[turn arbiter](turn-arbiter.md) delivers it at priority 100. When pi is idle
+(a kickoff from an empty prompt or a runner), nothing would settle, so the
+prompt is sent directly.
+
+Each continuation is first written to `goal.json` as `pendingContinuation`
+(Maka's durable continuation outbox) and cleared once its turn begins. After
+a crash, `session_start` re-sends it with the recovery fragment, at most 2
+times; then the goal pauses as `paused(recovery_exhausted)`. An Esc'd turn
+writes nothing, so a restart never re-drives a goal the user interrupted.
+
+A completion claim while `todowrite` still has pending or in-progress items
+gets a `[Task reminder]` instead of the verifier (Maka's task gate), at most 2
+times per goal.
 
 Inside a turn, the runaway guard reads each tool result. It looks for 6
 signals: the same action, an A-B-A-B cycle, an unchanged action and result,
@@ -120,6 +182,13 @@ reminder to memory or skills.
 | Ralph items per iteration | 2 default | `engine/ralph.ts` |
 | Ralph reflection | every 5 iterations | `engine/ralph.ts` |
 | `todowrite` list | 50 items, 200 characters each | `tools/todo.ts` |
+| Task reminders per goal | 2 | `engine/task-gate.ts` |
+| Pending continuation re-deliveries | 2 | `MAX_RECOVERY_REDELIVERIES`, `engine/continuation.ts` |
+| Graph: work per update / stop targets / inputs | 32 / 20 / 64 | `graph/engine.ts` |
+| Graph handoff | 16 KB per input, 48 KB total | `HANDOFF_MAX_*`, `graph/engine.ts` |
+| Graph stored result / history | 64 KB per step (16 KB archived), 20 graphs | `graph/engine.ts` |
+| Graph restart resumes | 1 per step | `MAX_RESTART_RESUMES` |
+| Graph wake aggregation | 400 ms | `wakeDelayMs` |
 
 A token count is an estimate (characters ÷ 4) when the provider reports no
 usage. `get_goal` then shows `tokens_estimated`.
@@ -134,6 +203,9 @@ usage. `get_goal` then shows `tokens_estimated`.
 - `packages/long-horizon/src/engine/verifier.ts`: the evidence brief and
   verdicts.
 - `packages/long-horizon/src/engine/runaway.ts`: the 6 detectors.
+- `packages/long-horizon/src/graph/engine.ts`, `graph/runner.ts`,
+  `tools/graph.ts`: the agent graph, its subagent runner and its tools.
+- `packages/long-horizon/src/engine/task-gate.ts`: the todo reminder.
 - `packages/core/src/jev/client.ts`: the shared jev transport.
 - `docs/long-horizon-design.md`: the design notes. Some defaults there are
   older than the source.

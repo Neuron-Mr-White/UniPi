@@ -41,7 +41,8 @@ when the task finishes or cannot continue.
 | `/unipi:ralph <prompt>` | Runs the prompt in `ralph` mode. |
 | `/unipi:swarm <prompt>` | Runs the prompt in `swarm` mode. |
 | `/unipi:graph <prompt>` | Runs the prompt in `graph` mode. |
-| `/unipi:<mode> status` | Shows the owner, the park slot and the judge settings. |
+| `/unipi:<mode> status` | Shows the owner, the park slot and the judge settings. For `graph` and `swarm`, also the graph's step counts. |
+| `/unipi:graph history`, `/unipi:swarm history` | Lists past agent graphs and the results each one selected. |
 | `/unipi:<mode> stop` | Ends the active owner. For `ralph`, it parks the loop. |
 | `/unipi:<mode> resume` | Starts the parked owner again. |
 | `/unipi:<mode> clear` | Removes the parked owner. |
@@ -58,8 +59,15 @@ Each tool shows only in its mode. `todowrite` shows in all four modes.
 |---|---|---|
 | `create_goal`, `get_goal`, `update_goal` | `goal` | Creates, reads and finishes the goal. Also changes the token budget. |
 | `ralph_done`, `loop_status` | `ralph` | Ends one iteration. Reads the loop state. |
-| `swarm_report`, `swarm_status`, `swarm_yield` | `swarm` | Records item results. Reads the state. Ends the turn while workers run. |
-| `update_agent_graph`, `graph_output`, `view_agent_graph` | `graph` | Declares the graph. Records item results. Reads the graph. |
+| `update_agent_graph`, `view_agent_graph`, `yield_agent_graph`, `agent_output`, `agent_swarm_status` | `graph`, `swarm` | Adds, stops or finishes work on the agent graph. Reads the graph, a step's result and the swarm status. Ends the turn while steps run. |
+
+`graph` and `swarm` share one durable agent graph (the Maka model). The model
+adds work with dependencies (`input_ids`), and the host runs each step as a
+background subagent. The model yields, and pi wakes it once at each
+checkpoint: a failure, nothing left to run, or everything settled. A graph
+closes only when the model finishes it with the results it chose. The graph is
+saved in the project's state folder, so it survives a restart. Steps that
+were running resume once in their own subagent session.
 | `todowrite` | all | Replaces the visible task list. |
 
 ## Settings

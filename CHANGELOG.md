@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.0.0-alpha.41] — 2026-10-13
+
+### Changed
+- Graph and swarm now follow Maka's agent graph. The model adds work with dependencies, and pi runs each step as a background subagent. Before, the model had to start every subagent and report back by hand, and weaker models skipped it. The model yields while steps run, and pi wakes it once at each checkpoint (a failure, nothing left to run, or everything settled). A graph closes only when the model finishes it with the results it chose. Swarm is the same graph with Maka's swarm instructions. New tools: `update_agent_graph` (`add_work` / `stop` / `finish`), `view_agent_graph`, `yield_agent_graph`, `agent_output`, `agent_swarm_status`. Removed: `swarm_report`, `swarm_status`, `swarm_yield`, `graph_output`, and the declare-once `update_agent_graph`. (UNI-279, UNI-280, UNI-281)
+
+### Added
+- The agent graph is saved in the project's state folder. It survives restarts: steps that were running when pi closed resume once in their own subagent session. `/unipi:graph history` and `/unipi:swarm history` list past graphs, and a new graph can reuse results a finished one selected. (UNI-279, UNI-280)
+- The UniPi app's Progress sheet shows finished and past graphs with their chart. It adds each step's details, its full result and its subagent session, plus Stop graph and a picker for earlier runs. The app can also open any subagent's transcript. (UNI-282)
+- Goal: the next continuation is saved before it is sent. If pi crashes, the next start sends it again, up to 2 times, then pauses the goal. A completion claim while the todo list still has open items gets a task reminder first, up to 2 times. (UNI-283)
+
+### Fixed
+- `/unipi:ralph start` from an empty prompt started the loop but never ran the first iteration. (UNI-283)
+- After a restart, `ralph_done` failed with "no active loop". Prompts and tools also pointed the model at the wrong task-file path. (UNI-283)
+- Stopping a ralph loop with `/unipi:regular` left its goal active, so the next `/unipi:goal` resumed the old checklist. (UNI-283)
+
 ## [3.0.0-alpha.40] — 2026-10-12
 
 ### Added
