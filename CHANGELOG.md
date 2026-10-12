@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- Typing `/` in the UniPi app suggests every command pi has, and `/command ` suggests that command's arguments, the same as in the terminal. A command's replies now show in the chat under the command. (UNI-276)
+- `/unipi:dream` suggests its subcommands (status, tray, report, run, stop, approve, reject).
+- App search: the UniPi app can search the whole session by meaning (word forms, typos, phrases) and jump to a match. (UNI-275)
+- Memory: the first session that finds 2.x memories asks once whether to convert them. (UNI-272)
+- Upgrade guide from 2.20 to 3.0: `docs/guide/upgrade-3.0.md`. (UNI-272)
+
+### Changed
+- `/unipi:visualize-progress` is calmer: one title, one bar, smaller boxes and the three newest log lines. When Goal mode is on but no goal has started yet, it says so instead of "No long-horizon mode active". (UNI-274)
+
+### Fixed
+- `/unipi:ralph <text>` + Enter no longer clears the text. (UNI-277)
+- `/unipi:goal`, `/unipi:swarm`, `/unipi:graph` and `/unipi:ralph` prompts (and `resume`) sent while the agent was working were silently dropped. They now run when the current turn ends. (UNI-276)
+- `/unipi:summarize` no longer freezes the input for the whole summary, and queues itself instead of refusing while the agent works. `/unipi:goal status` (the progress estimate), `/unipi:kanboard open|status|doctor` and `/unipi:memory-forget` run in the background, and `/unipi:session-recall` sent mid-run waits for the turn to end. (UNI-276)
+- Updater: an alpha install that is offered 3.0.0 stable now installs it, instead of reinstalling the alpha. (UNI-272)
+
 ## [3.0.0-alpha.39] — 2026-10-11
 
 ### Added
