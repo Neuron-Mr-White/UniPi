@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.0.0-alpha.40] — 2026-10-12
+
 ### Added
 - Typing `/` in the UniPi app suggests every command pi has, and `/command ` suggests that command's arguments, the same as in the terminal. A command's replies now show in the chat under the command. (UNI-276)
 - `/unipi:dream` suggests its subcommands (status, tray, report, run, stop, approve, reject).
