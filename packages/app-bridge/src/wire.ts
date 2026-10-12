@@ -281,6 +281,8 @@ export type OutMsg =
   | { t: "reconnect"; reason: string }
   /** A page of older entries (oldest first) ending right before `before`. */
   | { t: "history"; before: string; entries: unknown[]; more: boolean; ref?: string }
+  /** UNI-275: similarity search over this session's branch (newest-first ties). */
+  | { t: "search"; query: string; hits: Array<{ id: string; role: string; snippet: string; marks: Array<[number, number]>; score: number; timestamp?: string }>; ref?: string }
   /** `@` file suggestions for `query` (pi's own finder: fd, .gitignore aware). */
   | { t: "files"; query: string; items: FileItem[]; ref?: string }
   /** UNI-276: a command's argument suggestions (its getArgumentCompletions), for `/name <prefix>`. */
@@ -389,7 +391,8 @@ export type InMsg =
   | { t: "compact"; instructions?: string; ref?: string }
   | { t: "resync"; ref?: string }
   /** Older history: entries before the entry `before` on the active branch. */
-  | { t: "history"; before: string; ref?: string }
+  | { t: "history"; before: string; until?: string; ref?: string }
+  | { t: "search"; query: string; ref?: string }
   /** `@` file suggestions; `query` is the text after `@` (may start with `"`). */
   | { t: "files"; query: string; ref?: string }
   | { t: "arg_completions"; command: string; prefix: string; ref?: string }
@@ -479,6 +482,7 @@ const IN_TYPES = new Set([
   "compact",
   "resync",
   "history",
+  "search",
   "files",
   "arg_completions",
   "sessions",
@@ -549,9 +553,12 @@ export function parseIn(line: string): InMsg | { bad: string; ref?: string } | u
       return { t: "set_thinking", level: m.level, ref };
     case "compact":
       return { t: "compact", instructions: typeof m.instructions === "string" ? m.instructions : undefined, ref };
+    case "search":
+      if (typeof m.query !== "string") return { bad: "search.query must be a string", ref };
+      return { t: "search", query: m.query.slice(0, 256).replace(/[\r\n]/g, " "), ref };
     case "history":
       if (typeof m.before !== "string" || !m.before) return { bad: "history.before must be an entry id", ref };
-      return { t: "history", before: m.before.slice(0, 128), ref };
+      return { t: "history", before: m.before.slice(0, 128), ...(typeof m.until === "string" && m.until ? { until: m.until.slice(0, 128) } : {}), ref };
     case "arg_completions":
       if (typeof m.command !== "string" || !m.command || typeof m.prefix !== "string") return { bad: "arg_completions needs command and prefix", ref };
       return { t: "arg_completions", command: m.command.slice(0, 128), prefix: m.prefix.slice(0, 512).replace(/[\r\n]/g, " "), ref };

@@ -255,6 +255,14 @@ describe("history paging", () => {
     assert.deepEqual(page.entries.map((e: any) => e.id), ["a", "c", "b"]);
     assert.equal(page.more, false);
   });
+  it("UNI-275: `until` keeps paging past the budget (small copies) to reach that entry", () => {
+    const long = Array.from({ length: 40 }, (_, i) => ({ type: "message", id: `m${i}`, message: { role: "user", content: `${i} ` + "w".repeat(300) } }));
+    const plain = historyPage(long, "m39", 2_000);
+    assert.ok(!plain.entries.some((e: any) => e.id === "m10"), "a normal page stops at the budget");
+    const reach = historyPage(long, "m39", 2_000, "m10");
+    assert.ok(reach.entries.some((e: any) => e.id === "m10"), "the target is in the page");
+    assert.ok(reach.entries.some((e: any) => e.id === "m5"), "with a little context above it");
+  });
   it("pages by budget and reports more", () => {
     const page = historyPage(branch, "d", 600);
     assert.deepEqual(page.entries.map((e: any) => e.id), ["c", "b"]);

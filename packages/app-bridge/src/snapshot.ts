@@ -229,21 +229,38 @@ export function fitLine(msg: object): string {
  * that fit `budget`, oldest first. `more` = older entries remain.
  * `before` not on the branch → empty page, more false.
  */
-export function historyPage(branch: readonly unknown[], before: string, budget = ENTRIES_BUDGET): { entries: Json[]; more: boolean } {
+export function historyPage(branch: readonly unknown[], before: string, budget = ENTRIES_BUDGET, until?: string): { entries: Json[]; more: boolean } {
   const end = branch.findIndex((e) => (e as { id?: string })?.id === before);
   if (end <= 0) return { entries: [], more: false };
   const hidden = editedAway(branch);
+  // UNI-275 "navigate to": page back at least to `until` (+ a little context
+  // above it); entries are clipped harder once the budget is spent so the
+  // page still fits one frame.
+  const target = until ? branch.findIndex((e) => (e as { id?: string })?.id === until) : -1;
+  const stopAt = target >= 0 && target < end ? Math.max(0, target - 6) : -1;
   const out: Json[] = [];
   let used = 0;
   let i = end - 1;
   for (; i >= 0; i--) {
     const e = branch[i];
     if (!wantedEntry(e) || hidden.has((e as { id?: string }).id ?? "")) continue;
-    const safe = phoneSafe(e);
-    const size = jsonBytes(safe) + 1;
-    if (used + size > budget && out.length > 0) break;
+    const reaching = stopAt >= 0 && i >= stopAt;
+    let safe = phoneSafe(e);
+    let size = jsonBytes(safe) + 1;
+    if (used + size > budget && out.length > 0) {
+      if (!reaching) break;
+      // Reaching for the target: keep going with small copies.
+      safe = phoneSafe(e, 1024);
+      size = jsonBytes(safe) + 1;
+      // Never past one relay frame; the app keeps paging toward the target.
+      if (used + size > Math.max(budget, LINE_BUDGET - 96 * 1024)) break;
+    }
     out.push(size > budget ? phoneSafe(e, 8 * 1024) : safe);
     used += size;
+    if (stopAt >= 0 && i <= stopAt && used >= budget / 4) {
+      i -= 1;
+      break;
+    }
   }
   // Any wanted entry left before i?
   let more = false;

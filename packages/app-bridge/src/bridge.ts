@@ -14,7 +14,8 @@ import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync
 import { homedir } from "node:os";
 import { join, relative, resolve as resolvePath } from "node:path";
 import { DialogHub, wrapUi } from "./dialogs.js";
-import { ENTRIES_BUDGET, HELLO_ENTRIES_BUDGET, LINE_BUDGET, fitLine, historyPage, jsonBytes, phoneSafe, snapshotEntries, clipText, wantedEntry } from "./snapshot.js";
+import { ENTRIES_BUDGET, HELLO_ENTRIES_BUDGET, LINE_BUDGET, fitLine, historyPage, jsonBytes, phoneSafe, snapshotEntries, clipText, editedAway, wantedEntry } from "./snapshot.js";
+import { searchSession } from "./search.js";
 import {
   BRIDGE_PROTOCOL,
   LineSplitter,
@@ -1401,8 +1402,15 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
         write(sock, hello());
         return;
       case "history": {
-        const page = historyPage(c.sessionManager.getBranch(), msg.before, Math.min(ENTRIES_BUDGET, LINE_BUDGET - 32 * 1024));
+        const page = historyPage(c.sessionManager.getBranch(), msg.before, Math.min(ENTRIES_BUDGET, LINE_BUDGET - 32 * 1024), msg.until);
         write(sock, { t: "history", before: msg.before, entries: page.entries, more: page.more, ref: msg.ref });
+        return;
+      }
+      case "search": {
+        // UNI-275: the whole branch (not just what the phone has paged in).
+        const hidden = editedAway(c.sessionManager.getBranch());
+        const branch = (c.sessionManager.getBranch() as Array<{ id?: string }>).filter((e) => !hidden.has(e.id ?? "") && wantedEntry(e));
+        write(sock, { t: "search", query: msg.query, hits: searchSession(branch, msg.query, 60), ref: msg.ref });
         return;
       }
       case "arg_completions": {
