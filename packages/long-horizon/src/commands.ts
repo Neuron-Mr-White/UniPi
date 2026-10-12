@@ -133,8 +133,13 @@ const ralphCompletions = (prefix: string): CompletionItem[] => {
     { value: "resume", label: "resume", description: "reactivate the parked loop" },
     { value: "clear", label: "clear", description: "drop the parked loop" },
   ];
-  const hits = subs.filter((item) => item.value.trim().startsWith(prefix.trim()));
-  return hits.length > 0 ? hits : [{ value: "", label: "<prompt>", description: "run one turn in ralph mode" }];
+  // UNI-277: never offer a "<prompt>" item with value "" once the user has
+  // typed — Enter accepts the highlighted completion and would replace the
+  // typed prompt with "" (the text vanished on `/unipi:ralph <text>` + Enter).
+  if (prefix.trim().length === 0) {
+    return [{ value: "", label: "<prompt>", description: "run one turn in ralph mode" }, ...subs];
+  }
+  return subs.filter((item) => item.value.trim().startsWith(prefix.trim()));
 };
 
 export function registerLongHorizonCommands(

@@ -227,6 +227,16 @@ test("goal completions advertise stop", () => {
   assert.ok(items.some((item) => item.value === "stop"), "stop offered among s* subcommands");
 });
 
+test("UNI-277: typed ralph/goal prompts get no empty completion that Enter would apply", () => {
+  const r = rig();
+  for (const command of ["unipi:ralph", "unipi:goal", "unipi:swarm", "unipi:graph"]) {
+    const typed = r.completions(command, "fix the flaky test") as Array<{ value: string }>;
+    assert.ok(!typed.some((item) => item.value === ""), `${command}: no "" item once text is typed`);
+  }
+  const empty = r.completions("unipi:ralph", "") as Array<{ value: string }>;
+  assert.ok(empty.some((item) => item.value === "start "), "subcommands still listed on an empty argument");
+});
+
 // ── UNI-269: the app's mode chip (unipi:lh-mode runner) ──────────────────
 
 async function selectMode(mode: string): Promise<{ ok: boolean; mode?: string; reason?: string }> {
