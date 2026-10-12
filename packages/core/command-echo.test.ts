@@ -127,3 +127,24 @@ test("UNI-251: silenced (internal) commands run without an echo; others still ec
   assert.equal(isSilentEcho("/unipi:kanboard-do fix it"), false);
   assert.equal(isSilentEcho(undefined), false);
 });
+
+test("UNI-276: a command's notify / custom screen are recorded as command-output entries", async () => {
+  const pi = fakePi();
+  const api = withCommandEcho(pi as never);
+  const shown: string[] = [];
+  api.registerCommand("unipi:goal", {
+    handler: async (_args: string, ctx: any) => {
+      ctx.ui.notify("Mode command: Goal", "info");
+      await ctx.ui.custom(() => ({}));
+      await ctx.ui.custom(() => ({}));
+      assert.equal(ctx.cwd, "/p", "other ctx fields pass through");
+    },
+  });
+  const ui = { notify: (m: string) => shown.push(m), custom: async () => undefined };
+  await (pi.commands.get("unipi:goal") as any).handler("status", { ui, cwd: "/p" });
+  assert.deepEqual(shown, ["Mode command: Goal"], "the real notify still runs");
+  assert.deepEqual(pi.appended.slice(1), [
+    { type: "unipi-command-output", data: { command: "/unipi:goal", text: "Mode command: Goal", level: "info" } },
+    { type: "unipi-command-output", data: { command: "/unipi:goal", screen: true } },
+  ]);
+});

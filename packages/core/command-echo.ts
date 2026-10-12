@@ -17,6 +17,65 @@ import { Text } from "@earendil-works/pi-tui";
 
 export const COMMAND_ECHO_TYPE = "unipi-command-echo";
 
+/**
+ * UNI-276: what a command said, kept in the transcript under its echo so the
+ * app shows it as the command's reply (the TUI already showed it as a
+ * notification, so its renderer draws nothing). `screen` = the command opened
+ * a terminal-only screen (ui.custom) the phone can't show.
+ */
+export const COMMAND_OUTPUT_TYPE = "unipi-command-output";
+export interface CommandOutputData {
+  command: string;
+  text?: string;
+  level?: string;
+  screen?: boolean;
+}
+/** Longest command reply kept in the transcript. */
+const OUTPUT_MAX = 4000;
+
+/** The handler's ctx with `ui.notify` / `ui.custom` also recorded as COMMAND_OUTPUT_TYPE entries. */
+function recordingCtx(target: ExtensionAPI, name: string, ctx: ExtensionCommandContext): ExtensionCommandContext {
+  const ui = (ctx as { ui?: object } | undefined)?.ui;
+  if (!ctx || typeof ctx !== "object" || !ui) return ctx;
+  let screenNoted = false;
+  const record = (data: Omit<CommandOutputData, "command">) => {
+    try {
+      target.appendEntry(COMMAND_OUTPUT_TYPE, { command: `/${name}`, ...data });
+    } catch {
+      // Recording must never block the command.
+    }
+  };
+  const uiProxy = new Proxy(ui, {
+    get(u, prop, receiver) {
+      const value = Reflect.get(u, prop, receiver);
+      if (prop === "notify" && typeof value === "function") {
+        return (message: unknown, type?: unknown) => {
+          const text = String(message ?? "").trim();
+          if (text) record({ text: text.length > OUTPUT_MAX ? `${text.slice(0, OUTPUT_MAX - 1)}…` : text, level: typeof type === "string" ? type : "info" });
+          return value.call(u, message, type);
+        };
+      }
+      if (prop === "custom" && typeof value === "function") {
+        return (...args: unknown[]) => {
+          if (!screenNoted) {
+            screenNoted = true;
+            record({ screen: true });
+          }
+          return value.apply(u, args);
+        };
+      }
+      return typeof value === "function" ? value.bind(u) : value;
+    },
+  });
+  return new Proxy(ctx, {
+    get(c, prop, receiver) {
+      if (prop === "ui") return uiProxy;
+      const value = Reflect.get(c, prop, receiver);
+      return typeof value === "function" ? value.bind(c) : value;
+    },
+  });
+}
+
 /** Internal commands that must never leave an echo (UNI-251: the app
  * bridge's hidden `unipi-app-session`, run by `pi.sendUserMessage`, showed
  * up as `❭ /unipi-app-session` in the TUI and the app). Kept on a
@@ -57,6 +116,8 @@ export function withCommandEcho(pi: ExtensionAPI): ExtensionAPI {
         return new Text(`${marker}${t.fg?.("text", text) ?? text}`, 1, 0);
       },
     );
+    // The TUI showed the reply as a notification already: nothing to draw.
+    pi.registerEntryRenderer(COMMAND_OUTPUT_TYPE, () => undefined);
   } catch {
     // Renderer registration is best-effort; echoes still persist.
   }
@@ -77,7 +138,7 @@ export function withCommandEcho(pi: ExtensionAPI): ExtensionAPI {
               } catch {
                 // Echo must never block the command.
               }
-              return options.handler(args, ctx);
+              return options.handler(args, recordingCtx(target, name, ctx));
             },
           };
           // Reflect.apply keeps the command audit's literal source scan from

@@ -604,6 +604,8 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
     }, 1000);
   };
 
+  /** Set once syncCustom exists (below); pushes fresh custom entries shortly after a command ran. */
+  let syncSoon: () => void = () => {};
   const commands = (): CommandInfo[] => {
     let list: CommandInfo[] = [];
     try {
@@ -1175,6 +1177,7 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
             try {
               pi.sendUserMessage(content, { expandPromptTemplates: true } as never);
               write(sock, { t: "ack", ref: msg.ref, ...(isCommand ? { as: "command" as const } : {}) });
+          if (isCommand) syncSoon();
             } catch (error) {
               fail(error instanceof Error ? error.message : String(error));
             }
@@ -1208,6 +1211,7 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
           try {
             pi.sendUserMessage(content, { expandPromptTemplates: true } as never);
             write(sock, { t: "ack", ref: msg.ref, ...(isCommand ? { as: "command" as const } : {}) });
+          if (isCommand) syncSoon();
           } catch (error) {
             fail(error instanceof Error ? error.message : String(error));
           }
@@ -1225,6 +1229,7 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
         try {
           pi.sendUserMessage(content, { deliverAs, expandPromptTemplates: true } as never);
           write(sock, { t: "ack", ref: msg.ref, ...(isCommand ? { as: "command" as const } : {}) });
+          if (isCommand) syncSoon();
         } catch (error) {
           fail(error instanceof Error ? error.message : String(error));
         }
@@ -1749,7 +1754,10 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
     try {
       ctx = c;
       if (c.mode !== "tui" || process.env.UNIPI_SUBAGENT_CHILD === "1" || process.env.UNIPI_APP_BRIDGE === "0") return;
-      if (c.hasUI) wrapUi(c.ui, hub, (text, level) => send({ t: "notify", text: clipText(text, 4000), level }));
+      if (c.hasUI) wrapUi(c.ui, hub, (text, level) => {
+        send({ t: "notify", text: clipText(text, 4000), level });
+        syncSoon();
+      });
       computeCost();
       setRemoteDialogs(hub);
       listen();
@@ -2126,6 +2134,17 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
   };
   on("turn_end", safe(syncCustom));
   on("agent_settled", safe(syncCustom));
+  // UNI-276: a command that starts no turn (status / toggles / pickers) still
+  // leaves its echo + reply entries — push them soon after it runs.
+  syncSoon = () => {
+    for (const ms of [120, 1200, 4000]) setTimeout(() => {
+      try {
+        syncCustom();
+      } catch {
+        // never break pi
+      }
+    }, ms).unref?.();
+  };
 
   return {
     /** Test seam. */
