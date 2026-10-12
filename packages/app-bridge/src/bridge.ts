@@ -44,7 +44,7 @@ import { fileSuggestions } from "./files.js";
 import { statPaths } from "./paths.js";
 import { registerPath, resolveMedia } from "./media.js";
 import { listWorkItems, stopWorkItem, backgroundWorkItem, workLogPage } from "./work.js";
-import { bus, callCommandRunner, pendingWorkLabel, silenceCommandEcho, subscribePendingWork, UNIPI_EVENTS } from "@pi-unipi/core";
+import { bus, callCommandRunner, commandArgCompleters, pendingWorkLabel, silenceCommandEcho, subscribePendingWork, UNIPI_EVENTS } from "@pi-unipi/core";
 import type { BtwListPage } from "./wire.js";
 
 /** `media_chunk.data` (base64) stays well under the 900 KiB bridge line
@@ -1403,6 +1403,25 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
       case "history": {
         const page = historyPage(c.sessionManager.getBranch(), msg.before, Math.min(ENTRIES_BUDGET, LINE_BUDGET - 32 * 1024));
         write(sock, { t: "history", before: msg.before, entries: page.entries, more: page.more, ref: msg.ref });
+        return;
+      }
+      case "arg_completions": {
+        // UNI-276: the same argument completions the terminal's autocomplete shows.
+        let items: Array<{ value: string; label: string; description?: string }> = [];
+        try {
+          const cmd = (pi.getCommands() as Array<{ name: string; source: string; getArgumentCompletions?: unknown }>).find((x) => x.name === msg.command);
+          const fn = (cmd as { getArgumentCompletions?: (p: string) => unknown } | undefined)?.getArgumentCompletions ?? commandArgCompleters().get(msg.command);
+          const out = fn ? await Promise.resolve(fn(msg.prefix)) : undefined;
+          if (Array.isArray(out)) {
+            items = out
+              .filter((x): x is { value: string; label?: string; description?: string } => !!x && typeof (x as { value?: unknown }).value === "string")
+              .slice(0, 50)
+              .map((x) => ({ value: x.value, label: typeof x.label === "string" ? x.label : x.value, ...(typeof x.description === "string" ? { description: clipText(x.description, 160) } : {}) }));
+          }
+        } catch {
+          // A completer that throws just offers nothing.
+        }
+        write(sock, { t: "arg_completions", command: msg.command, prefix: msg.prefix, items, ref: msg.ref });
         return;
       }
       case "files": {

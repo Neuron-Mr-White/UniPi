@@ -217,6 +217,19 @@ export default function (pi: ExtensionAPI): void {
 
   pi.registerCommand("unipi:dream", {
     description: "Dream (background memory consolidation): /unipi:dream status|tray|report|run|stop|approve <n>|reject <n>",
+    getArgumentCompletions: (prefix: string) => {
+      const subs = [
+        { value: "status", label: "status", description: "last run and what's scheduled" },
+        { value: "tray", label: "tray", description: "open the Dream tab" },
+        { value: "report", label: "report", description: "the latest dream report" },
+        { value: "run", label: "run", description: "dream now (in the background)" },
+        { value: "stop", label: "stop", description: "stop the running dream" },
+        { value: "approve ", label: "approve <n>", description: "apply proposal n" },
+        { value: "reject ", label: "reject <n>", description: "drop proposal n" },
+      ];
+      const q = prefix.trim();
+      return subs.filter((x) => x.value.trim().startsWith(q));
+    },
     handler: async (args, ctx) => {
       const parts = args.trim().split(/\s+/).filter(Boolean);
       const sub = parts[0] ?? "status";

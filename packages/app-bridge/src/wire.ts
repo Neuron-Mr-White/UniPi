@@ -283,6 +283,8 @@ export type OutMsg =
   | { t: "history"; before: string; entries: unknown[]; more: boolean; ref?: string }
   /** `@` file suggestions for `query` (pi's own finder: fd, .gitignore aware). */
   | { t: "files"; query: string; items: FileItem[]; ref?: string }
+  /** UNI-276: a command's argument suggestions (its getArgumentCompletions), for `/name <prefix>`. */
+  | { t: "arg_completions"; command: string; prefix: string; items: Array<{ value: string; label: string; description?: string }>; ref?: string }
   /** Reply to `paths_stat{paths}` (UNI-204): one item per requested path, same order. */
   | { t: "paths_stat"; items: Array<{ path: string; resolved: string; kind: "file" | "dir" | "missing" }>; ref?: string }
   /** Sessions matching `sessions{scope, query?}`, newest first, capped. */
@@ -390,6 +392,7 @@ export type InMsg =
   | { t: "history"; before: string; ref?: string }
   /** `@` file suggestions; `query` is the text after `@` (may start with `"`). */
   | { t: "files"; query: string; ref?: string }
+  | { t: "arg_completions"; command: string; prefix: string; ref?: string }
   /** List sessions to resume: this project's or every project's, optionally filtered. */
   | { t: "sessions"; scope: "cwd" | "all"; query?: string; ref?: string }
   /** Start a brand-new session. `force`: abort the current run first. */
@@ -477,6 +480,7 @@ const IN_TYPES = new Set([
   "resync",
   "history",
   "files",
+  "arg_completions",
   "sessions",
   "session_new",
   "session_resume",
@@ -548,6 +552,9 @@ export function parseIn(line: string): InMsg | { bad: string; ref?: string } | u
     case "history":
       if (typeof m.before !== "string" || !m.before) return { bad: "history.before must be an entry id", ref };
       return { t: "history", before: m.before.slice(0, 128), ref };
+    case "arg_completions":
+      if (typeof m.command !== "string" || !m.command || typeof m.prefix !== "string") return { bad: "arg_completions needs command and prefix", ref };
+      return { t: "arg_completions", command: m.command.slice(0, 128), prefix: m.prefix.slice(0, 512).replace(/[\r\n]/g, " "), ref };
     case "files":
       if (typeof m.query !== "string") return { bad: "files.query must be a string", ref };
       return { t: "files", query: m.query.slice(0, 512).replace(/[\r\n]/g, ""), ref };

@@ -86,6 +86,16 @@ function silentSet(): Set<string> {
   return (g[SILENT_KEY] ??= new Set<string>());
 }
 
+/** UNI-276: every wrapped command's argument completer, by name — the app
+ * bridge offers them to the phone (pi.getCommands() doesn't carry them).
+ * A `Symbol.for` global, like the silent set, so copies of core agree. */
+const COMPLETERS_KEY = Symbol.for("unipi.commandEcho.completers");
+export type ArgCompleter = (prefix: string) => unknown;
+export function commandArgCompleters(): Map<string, ArgCompleter> {
+  const g = globalThis as { [COMPLETERS_KEY]?: Map<string, ArgCompleter> };
+  return (g[COMPLETERS_KEY] ??= new Map<string, ArgCompleter>());
+}
+
 /** Never echo `/name` (internal, programmatic commands). Call before or after registering. */
 export function silenceCommandEcho(name: string): void {
   silentSet().add(name.replace(/^\//, ""));
@@ -126,6 +136,8 @@ export function withCommandEcho(pi: ExtensionAPI): ExtensionAPI {
     get(target, prop, receiver) {
       if (prop === "registerCommand") {
         return (name: string, options: Omit<RegisteredCommand, "name" | "sourceInfo">) => {
+          const completer = (options as { getArgumentCompletions?: ArgCompleter }).getArgumentCompletions;
+          if (typeof completer === "function") commandArgCompleters().set(name, completer.bind(options));
           const wrapped = {
             ...options,
             handler: (args: string, ctx: ExtensionCommandContext) => {
