@@ -72,7 +72,7 @@ export function registerCommands(pi: ExtensionAPI): void {
       content: result.text,
       display: true,
       details: { unipiHarness: harnessMetadata({ source: "Compactor", title: "Session recall", synopsis: "Results from /unipi:session-recall" }, "direct") },
-    }, { triggerTurn: true });
+    }, { triggerTurn: true, ...(ctx.isIdle?.() === false ? { deliverAs: "followUp" as const } : {}) });
   };
   pi.registerCommand("unipi:session-recall", {
     description: "Recall earlier parts of this session. Plain keywords work best; add scope:all to reach edited or retried turns.",

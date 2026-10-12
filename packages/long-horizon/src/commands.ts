@@ -142,6 +142,15 @@ const ralphCompletions = (prefix: string): CompletionItem[] => {
   return subs.filter((item) => item.value.trim().startsWith(prefix.trim()));
 };
 
+/** pi is mid-run (a send without deliverAs would throw, silently). */
+function isBusy(ctx: ExtensionCommandContext): boolean {
+  try {
+    return typeof ctx.isIdle === "function" && !ctx.isIdle();
+  } catch {
+    return false;
+  }
+}
+
 export function registerLongHorizonCommands(
   pi: ExtensionAPI,
   gate: Gate,
@@ -230,11 +239,17 @@ export function registerLongHorizonCommands(
           `\nSettings: ~/.pi/agent/settings.json → unipi.longHorizon`,
       );
       // /goal status: estimate progress + summary in a side call (user-only).
+      // The estimate is a model call: run it in the background so the input
+      // stays free; it posts its progress bar / failure note when done.
       if (mode === "goal" && progressHooks?.goalEstimateOn()) {
         ctx.ui.setStatus?.("lh-progress", "◎ estimating goal progress…");
-        const outcome = await progressHooks.estimateGoal(ctx);
-        ctx.ui.setStatus?.("lh-progress", undefined);
-        if (outcome === "failed") notify(ctx, "Goal progress estimate failed (model unavailable or unparseable reply).");
+        void progressHooks
+          .estimateGoal(ctx)
+          .then((outcome) => {
+            if (outcome === "failed") notify(ctx, "Goal progress estimate failed (model unavailable or unparseable reply).");
+          })
+          .catch(() => notify(ctx, "Goal progress estimate failed."))
+          .finally(() => ctx.ui.setStatus?.("lh-progress", undefined));
       }
       return;
     }
@@ -252,10 +267,12 @@ export function registerLongHorizonCommands(
       bus.emit(UNIPI_EVENTS.LONG_HORIZON_OWNER_CHANGED, { event: "resumed", ownerId: resumed.ownerId });
       const resumeMode = resumed.kind === "ralph-loop" ? "ralph" : resumed.kind;
       gate.setExplicit(resumeMode as LhMode);
+      // Mid-run: queue it (sendUserMessage without deliverAs throws while streaming, silently).
       await sendHarnessUserMessage(
         pi,
         "Continue the resumed owner from its own durable state; re-read its status before acting.",
         { source: "Long-horizon", title: "Resume", synopsis: "Owner resumed from durable state" },
+        isBusy(ctx) ? { deliverAs: "followUp" } : undefined,
       );
       return;
     }
@@ -309,11 +326,18 @@ export function registerLongHorizonCommands(
     gate.setExplicit(mode);
     const prompt = args.trim();
     const collapsed = prompt.replace(/\s+/g, " ").trim();
-    await sendHarnessUserMessage(pi, prompt, {
-      source: "Long-horizon",
-      title: definition.label,
-      synopsis: collapsed.length > 80 ? `${collapsed.slice(0, 80)}…` : collapsed,
-    });
+    const busy = isBusy(ctx);
+    await sendHarnessUserMessage(
+      pi,
+      prompt,
+      {
+        source: "Long-horizon",
+        title: definition.label,
+        synopsis: collapsed.length > 80 ? `${collapsed.slice(0, 80)}…` : collapsed,
+      },
+      busy ? { deliverAs: "followUp" } : undefined,
+    );
+    if (busy) notify(ctx, `${definition.label} queued — it starts when the current turn ends.`);
   };
 
   pi.registerCommand("unipi:goal", { description: MODE_DESCRIPTIONS.goal, getArgumentCompletions: goalCompletions, handler: modeHandler("goal") });

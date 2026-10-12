@@ -1340,6 +1340,17 @@ export function registerKanboardCommands(pi: ExtensionAPI, deps: CommandDeps): v
     return reason ? { block: true, reason } : undefined;
   });
 
+  /** Run slow command work off the input path; a failure still reaches the user. */
+  const background = (ctx: ExtensionCommandContext, what: string, work: () => Promise<unknown>): void => {
+    void work().catch((error: unknown) => {
+      try {
+        ctx.ui.notify(`${what} failed: ${error instanceof Error ? error.message : String(error)}`, "error");
+      } catch {
+        // no UI
+      }
+    });
+  };
+
   pi.registerCommand("unipi:kanboard", {
     description: "Kanboard — the board: open, onboard, status, doctor (bare = help)",
     getArgumentCompletions: (prefix: string) => kanboardCompletions(prefix ?? ""),
@@ -1384,11 +1395,13 @@ export function registerKanboardCommands(pi: ExtensionAPI, deps: CommandDeps): v
         case "close":
           await runStopDaemon(deps, ctx);
           return;
+        // Health probes + CLI spawns: run in the background so the input
+        // stays free; each reports through notify when done.
         case "status":
-          await runStatus(deps, ctx);
+          background(ctx, "kanboard status", () => runStatus(deps, ctx));
           return;
         case "doctor":
-          await runDoctor(deps, ctx, pi);
+          background(ctx, "kanboard doctor", () => runDoctor(deps, ctx, pi));
           return;
         case "show":
           await runShow(deps, ctx, pi, parts.includes("--all"), parts.find((part) => SHOW_FILTERS.includes(part)));
@@ -1398,7 +1411,8 @@ export function registerKanboardCommands(pi: ExtensionAPI, deps: CommandDeps): v
             ctx.ui.notify(`kanboard: ${deps.unavailable}`, "warning");
             return;
           }
-          await runOpen(deps, ctx, rest);
+          // Starts the daemon and polls for it (up to seconds): background.
+          background(ctx, "kanboard open", () => runOpen(deps, ctx, rest));
           return;
       }
     },

@@ -29,6 +29,8 @@ interface Rig {
   run: (command: string, args?: string) => Promise<void>;
   tool: (name: string, params: Record<string, unknown>) => Promise<string>;
   completions: (command: string, prefix: string) => unknown;
+  idle: { value: boolean };
+  sentOptions: unknown[];
 }
 
 function rig(): Rig {
@@ -39,6 +41,7 @@ function rig(): Rig {
   const gate = new Gate({ owner, loadSettings: () => DEFAULT_SETTINGS, env: {} });
   const notifications: string[] = [];
   const sent: string[] = [];
+  const sentOptions: unknown[] = [];
   const events: Array<{ name: string; payload: Record<string, unknown> }> = [];
   const commands = new Map<string, Handler>();
   const tools = new Map<string, { execute: (id: string, params: Record<string, unknown>) => Promise<{ content: Array<{ text: string }> }> }>();
@@ -50,8 +53,9 @@ function rig(): Rig {
       tools.set(definition.name, definition);
     },
     on: () => () => undefined,
-    sendUserMessage: (text: string) => {
+    sendUserMessage: (text: string, options?: unknown) => {
       sent.push(text);
+      sentOptions.push(options);
     },
     events: { emit: (name: string, payload: Record<string, unknown>) => events.push({ name, payload }) },
   } as never;
@@ -71,7 +75,8 @@ function rig(): Rig {
       sent.push(message);
     },
   });
-  const ctx = { hasUI: true, ui: { notify: (text: string) => notifications.push(text) } } as never;
+  const idle = { value: true };
+  const ctx = { hasUI: true, isIdle: () => idle.value, ui: { notify: (text: string) => notifications.push(text) } } as never;
   return {
     machine,
     owner,
@@ -81,6 +86,8 @@ function rig(): Rig {
     notifications,
     sent,
     events,
+    idle,
+    sentOptions,
     run: async (command: string, args = "") => {
       const handler = commands.get(command)?.handler;
       assert.ok(handler, `command ${command} not registered`);
@@ -235,6 +242,17 @@ test("UNI-277: typed ralph/goal prompts get no empty completion that Enter would
   }
   const empty = r.completions("unipi:ralph", "") as Array<{ value: string }>;
   assert.ok(empty.some((item) => item.value === "start "), "subcommands still listed on an empty argument");
+});
+
+test("mid-run a mode prompt is queued as a follow-up (a plain send would be dropped)", async () => {
+  const r = rig();
+  r.idle.value = false;
+  await r.run("unipi:goal", "ship it");
+  assert.deepEqual(r.sentOptions.at(-1), { deliverAs: "followUp" });
+  assert.match(r.notifications.at(-1) ?? "", /queued/);
+  r.idle.value = true;
+  await r.run("unipi:swarm", "fan out");
+  assert.equal(r.sentOptions.at(-1), undefined);
 });
 
 // ── UNI-269: the app's mode chip (unipi:lh-mode runner) ──────────────────

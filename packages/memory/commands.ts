@@ -304,8 +304,18 @@ For each item, use the memory_store tool to save it with an appropriate title an
         return;
       }
       const b = backend();
-      const res = b ? await b.delete(b.project, args.trim()) : { found: false };
-      ctx.ui.notify(res.found ? `Deleted memory: ${args}` : `Memory not found: ${args}`, "info");
+      const title = args.trim();
+      // The delete can wait on the daemon for seconds: keep the input free
+      // in the TUI (headless/print mode still waits so the reply lands).
+      const work = (async () => {
+        try {
+          const res = b ? await b.delete(b.project, title) : { found: false };
+          ctx.ui.notify(res.found ? `Deleted memory: ${title}` : `Memory not found: ${title}`, "info");
+        } catch (error) {
+          ctx.ui.notify(`Couldn't delete "${title}": ${error instanceof Error ? error.message : String(error)}`, "error");
+        }
+      })();
+      if (!ctx.hasUI) await work;
     },
   });
 

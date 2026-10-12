@@ -31,10 +31,8 @@ export function registerSummarizeCommand(pi: ExtensionAPI): void {
   pi.registerCommand(`${UNIPI_PREFIX}${UTILITY_COMMANDS.SUMMARIZE}`, {
     description: "Summarize this session for you (answer first, then findings, open items, questions); add text to set a focus",
     handler: async (args: string, ctx: ExtensionCommandContext) => {
-      if (!ctx.isIdle()) {
-        if (ctx.hasUI) ctx.ui.notify("Agent is busy. Press ESC to interrupt, then try again.", "warning");
-        return;
-      }
+      // Busy: queue it for when the current run ends (was: refused).
+      const busy = !ctx.isIdle();
       if (!hasSummarizeSkill(pi)) {
         if (ctx.hasUI) ctx.ui.notify("The summarize skill is off or missing. Turn it on in /unipi:skills.", "warning");
         return;
@@ -44,10 +42,13 @@ export function registerSummarizeCommand(pi: ExtensionAPI): void {
         pi,
         summarizePrompt(focus),
         { source: "Utility", title: "Summarize", synopsis: focus ? `ask: ${focus}` : "last reply" },
-        { expandPromptTemplates: true },
+        { expandPromptTemplates: true, ...(busy ? { deliverAs: "followUp" as const } : {}) },
       );
+      if (busy && ctx.hasUI) ctx.ui.notify("Summary queued — it runs when the current turn ends.", "info");
       // sendUserMessage does not wait. Print mode (-p) exits when the handler
-      // returns, so wait for the summary turn to start and end.
+      // returns, so wait for the summary turn there — never in the TUI, where
+      // waiting froze the input for the whole summary turn.
+      if (ctx.hasUI) return;
       await new Promise((r) => setTimeout(r, 0));
       await ctx.waitForIdle?.();
     },

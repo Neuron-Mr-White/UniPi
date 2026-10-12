@@ -46,7 +46,7 @@ describe("/unipi:summarize", () => {
     assert.equal(sent[0]!.text, "/skill:summarize auth fix");
     assert.deepEqual(sent[0]!.opts, { expandPromptTemplates: true });
   });
-  it("refuses when the skill is off, and when the agent is busy", async () => {
+  it("refuses when the skill is off; queues as a follow-up when the agent is busy", async () => {
     const { pi, sent, registered } = fakePi([]);
     registerSummarizeCommand(pi);
     const notes: string[] = [];
@@ -55,8 +55,19 @@ describe("/unipi:summarize", () => {
     assert.match(notes[0]!, /summarize skill is off/);
     const on = fakePi(["skill:summarize"]);
     registerSummarizeCommand(on.pi);
-    await on.registered["unipi:summarize"]!("", { isIdle: () => false, hasUI: false });
-    assert.equal(on.sent.length, 0);
+    const busyNotes: string[] = [];
+    await on.registered["unipi:summarize"]!("", { isIdle: () => false, hasUI: true, ui: { notify: (m: string) => busyNotes.push(m) } });
+    assert.deepEqual(on.sent[0]!.opts, { expandPromptTemplates: true, deliverAs: "followUp" });
+    assert.match(busyNotes[0]!, /queued/);
+  });
+  it("never waits for the summary turn in the TUI (that froze the input)", async () => {
+    const { pi, registered } = fakePi(["skill:summarize"]);
+    registerSummarizeCommand(pi);
+    let waited = false;
+    await registered["unipi:summarize"]!("", { ...idle(), waitForIdle: async () => void (waited = true) });
+    assert.equal(waited, false);
+    await registered["unipi:summarize"]!("", { isIdle: () => true, hasUI: false, waitForIdle: async () => void (waited = true) });
+    assert.equal(waited, true, "print mode (-p) still waits");
   });
   it("hasSummarizeSkill survives a throwing getCommands", () => {
     assert.equal(hasSummarizeSkill({ getCommands: () => { throw new Error("x"); } } as never), false);
