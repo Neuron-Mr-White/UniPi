@@ -11,6 +11,7 @@ export {
   stopWorkItem,
   backgroundWorkItem,
   workLogPage,
+  workTranscript,
   type WorkItem,
   type WorkDot,
 } from "@pi-unipi/core";

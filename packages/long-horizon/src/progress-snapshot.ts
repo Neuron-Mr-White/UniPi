@@ -119,6 +119,13 @@ function itemsFor(mode: RunMode, title: string, input: LhProgressInput, live: bo
         ...(mode === "graph" ? { wave: work.wave } : {}),
         ...(summary ? { summary: clip(summary, SUMMARY_MAX) } : {}),
         ...(work.attempts > 0 ? { attempts: work.attempts } : {}),
+        ...(work.operatorId ? { operatorId: work.operatorId } : {}),
+        ...(work.resultId ? { resultId: work.resultId } : {}),
+        ...(work.target.kind === "new_preset" ? { profile: work.target.subagentId } : {}),
+        ...(work.startedAt !== undefined ? { startedAt: work.startedAt } : {}),
+        ...(work.endedAt !== undefined ? { endedAt: work.endedAt } : {}),
+        ...(work.toolCalls !== undefined ? { toolCalls: work.toolCalls } : {}),
+        ...(work.usage && (work.usage.input || work.usage.output) ? { tokens: (work.usage.input ?? 0) + (work.usage.output ?? 0) } : {}),
       };
     });
   }
@@ -158,6 +165,11 @@ function buildRun(
     counts: countsOf(items),
     ...(endedAt !== undefined ? { endedAt } : {}),
   };
+  const g = input.graph;
+  if ((mode === "graph" || mode === "swarm") && g && g.mode === mode && g.task === title) {
+    run.graphId = g.graphId;
+    if (g.finish) run.selected = [...g.finish.resultIds];
+  }
   if (mode === "ralph" && input.ralph) {
     const r = input.ralph;
     run.ralph = {

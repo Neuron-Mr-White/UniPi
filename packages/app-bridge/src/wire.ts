@@ -325,6 +325,8 @@ export type OutMsg =
   | { t: "lh_progress"; progress: LhProgressInfo | undefined; ref?: string }
   /** UNI-269: the working mode changed (pushed to every client, coalesced). */
   | { t: "lh_mode"; mode: LhModeInfo | undefined }
+  /** UNI-282: reply to `lh_graph` (stop replies `ack` instead). */
+  | { t: "lh_graph"; op: "output" | "history"; output?: unknown; runs?: unknown[]; ref?: string }
   /** UNI-118: Dream status changed (pushed to every client, coalesced), or the
    *  reply to `dream_get` (`ref`). `status` undefined = the dream module isn't loaded. */
   | { t: "dream_status"; status: DreamStatusInfo | undefined; ref?: string }
@@ -464,6 +466,11 @@ export type InMsg =
   /** UNI-269: switch the working mode (no prompt); `none` = /unipi:regular.
    *  Replies `ack` (then an `lh_mode` push) or `error{message}`. */
   | { t: "set_lh_mode"; mode: LhModeId; ref?: string }
+  /** UNI-282: agent graph ops for the Progress sheet. `output` = one step's
+   *  full committed result (`id` = work id or result id, `graphId?` for a past
+   *  graph); `stop` = stop the running graph; `history` = past graphs as runs.
+   *  Replies `lh_graph{op, output? | runs?, ref}` or `error`. */
+  | { t: "lh_graph"; op: "output" | "stop" | "history"; id?: string; graphId?: string; ref?: string }
   /** UNI-118: the current Dream status; replies `dream_status{status, ref}`. */
   | { t: "dream_get"; ref?: string }
   /** UNI-118: one run's report + trajectory; replies `dream_detail` (or `error`). */
@@ -510,6 +517,7 @@ const IN_TYPES = new Set([
   "work_background",
   "lh_progress_get",
   "set_lh_mode",
+  "lh_graph",
   "dream_get",
   "dream_detail",
   "dream_action",
@@ -654,6 +662,17 @@ export function parseIn(line: string): InMsg | { bad: string; ref?: string } | u
         return { bad: "set_lh_mode.mode must be goal|ralph|swarm|graph|none", ref };
       }
       return { t: "set_lh_mode", mode: m.mode as LhModeId, ref };
+    case "lh_graph": {
+      if (m.op !== "output" && m.op !== "stop" && m.op !== "history") return { bad: "lh_graph.op must be output|stop|history", ref };
+      if (m.op === "output" && (typeof m.id !== "string" || !m.id)) return { bad: "lh_graph output needs id", ref };
+      return {
+        t: "lh_graph",
+        op: m.op,
+        ...(typeof m.id === "string" && m.id ? { id: m.id } : {}),
+        ...(typeof m.graphId === "string" && m.graphId ? { graphId: m.graphId } : {}),
+        ref,
+      };
+    }
     case "dream_get":
       return { t: "dream_get", ref };
     case "dream_detail":

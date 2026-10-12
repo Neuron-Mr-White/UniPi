@@ -684,6 +684,12 @@ export default function subagents(pi: ExtensionAPI, deps?: { manager?: SubagentM
     cancel: (id) => manager.cancel(id, "user"),
   };
   setGraphRunPort(graphPort);
+  // UNI-282: the app's work detail / graph step "open session" reads this.
+  (globalThis as unknown as Record<symbol, unknown>)[Symbol.for("unipi.subagents.transcript")] = (id: string) => {
+    const rec = manager.record(id);
+    if (rec === undefined) return undefined;
+    return { items: transcriptOf(rec), ...(rec.report !== undefined ? { report: rec.report } : {}), status: rec.status };
+  };
 
   pi.on("session_start", (_event, ctx) => {
     uiCtx = ctx;

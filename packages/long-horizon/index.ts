@@ -571,6 +571,39 @@ export default function longHorizon(pi: ExtensionAPI): void {
     publishLh();
   });
 
+  // UNI-282: the app's Progress sheet — read a step's full result, stop the
+  // graph, list past graphs as progress runs (Maka's panel: outputs, Stop
+  // Graph, current vs history run selector).
+  registerCommandRunner("unipi:lh-graph", async (_ctx, args) => {
+    const a = (args ?? {}) as { op?: unknown; id?: unknown; graphId?: unknown };
+    const op = String(a.op ?? "");
+    if (op === "output") {
+      const found = graphEngine.readResult(String(a.id ?? ""), typeof a.graphId === "string" ? a.graphId : undefined);
+      if (!found) return { ok: false, reason: "That step is gone." };
+      const w = found.work;
+      return { ok: true, output: { graphId: found.graphId, id: w.workId, status: w.status, ...(w.resultId ? { resultId: w.resultId } : {}), ...(w.operatorId ? { operatorId: w.operatorId } : {}), instruction: w.instruction, ...(w.result ? { text: w.result } : {}), ...(w.failure ? { failure: w.failure } : {}), ...(w.resultTruncated ? { truncated: true } : {}) } };
+    }
+    if (op === "stop") {
+      const graph = graphEngine.open();
+      if (!graph) return { ok: false, reason: "No agent graph is running." };
+      const stopped = stopActiveOwner(pi, gate, owner, machine, toolset, graph.mode);
+      if (stopped === undefined) graphEngine.abandon("stopped(user_requested)");
+      return { ok: true };
+    }
+    if (op === "history") {
+      const runs = graphEngine.history().slice(0, 20).map((g) =>
+        lhProgressSnapshot({
+          finished: { kind: g.mode, label: g.task, terminalReason: g.finish ? "complete(finish)" : (g.abandoned?.reason ?? "stopped"), endedAt: new Date(g.finish?.at ?? g.abandoned?.at ?? g.updatedAt).toISOString() },
+          graph: g,
+          graphEngine,
+          now: Date.now(),
+        }).last,
+      ).filter((run) => run !== undefined);
+      return { ok: true, runs };
+    }
+    return { ok: false, reason: `unknown op "${op}"` };
+  });
+
   // UNI-280: freeze the graph BEFORE subagents cancels its children on
   // shutdown (long-horizon loads first, handlers run in registration order),
   // so in-flight work stays `running` on disk and resumes next session.

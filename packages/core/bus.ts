@@ -58,6 +58,17 @@ export interface LhProgressItem {
   /** The committed result / failure note, clipped. */
   summary?: string;
   attempts?: number;
+  /** UNI-282 (graph/swarm): the subagent that runs/ran it (opens its transcript). */
+  operatorId?: string;
+  /** Committed result id (`r-<id>`) — read the full text with the graph output op. */
+  resultId?: string;
+  /** Subagent profile (graph/swarm). */
+  profile?: string;
+  startedAt?: number;
+  endedAt?: number;
+  toolCalls?: number;
+  /** Input + output tokens of the child run (settled). */
+  tokens?: number;
 }
 
 /** One long-horizon run (the current one or the last finished one). */
@@ -73,6 +84,10 @@ export interface LhProgressRun {
   ralph?: { name: string; iteration: number; maxIterations: number; checked: number; total: number };
   goal?: { objective: string; status: string; turn: number; maxTurns: number; percent?: number; summary?: string; estimatedAt?: number };
   endedAt?: number;
+  /** UNI-282 (graph/swarm): the durable graph id (history / output ops). */
+  graphId?: string;
+  /** Graph/swarm: result ids the supervisor's finish selected. */
+  selected?: string[];
 }
 
 /** One line of the shared progress log, generated from state transitions (never hand-written). */

@@ -44,7 +44,7 @@ import { setRemoteDialogs } from "./remote.js";
 import { fileSuggestions } from "./files.js";
 import { statPaths } from "./paths.js";
 import { registerPath, resolveMedia } from "./media.js";
-import { listWorkItems, stopWorkItem, backgroundWorkItem, workLogPage } from "./work.js";
+import { listWorkItems, stopWorkItem, backgroundWorkItem, workLogPage, workTranscript } from "./work.js";
 import { bus, callCommandRunner, commandArgCompleters, pendingWorkLabel, silenceCommandEcho, subscribePendingWork, UNIPI_EVENTS } from "@pi-unipi/core";
 import type { BtwListPage } from "./wire.js";
 
@@ -62,6 +62,8 @@ export function recordLhMode(state: LhModeInfo | undefined): { lhMode: string | 
 
 /** UNI-269: long-horizon's command runner behind `set_lh_mode` (packages/long-horizon/src/commands.ts). */
 export const LH_MODE_RUNNER = "unipi:lh-mode";
+/** UNI-282: long-horizon's agent graph ops runner (packages/long-horizon/index.ts). */
+export const LH_GRAPH_RUNNER = "unipi:lh-graph";
 /** UNI-118: dream_status pushes coalesce within this window. */
 export const DREAM_COALESCE_MS = 250;
 
@@ -1581,6 +1583,26 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
         }
         return;
       }
+      case "lh_graph": {
+        try {
+          const out = await callCommandRunner<{ ok: boolean; reason?: string; output?: { text?: string }; runs?: unknown[] }>(LH_GRAPH_RUNNER, ctx, { op: msg.op, id: msg.id, graphId: msg.graphId });
+          if (!out.found) return fail("The agent graph needs a newer unipi on this PC.");
+          if (!out.result?.ok) return fail(out.result?.reason ?? "The graph op failed.");
+          if (msg.op === "stop") {
+            ack();
+            return;
+          }
+          if (msg.op === "output") {
+            const o = out.result.output ?? {};
+            write(sock, { t: "lh_graph", op: "output", output: { ...o, ...(typeof o.text === "string" ? { text: clipText(o.text, 256 * 1024) } : {}) }, ref: msg.ref });
+            return;
+          }
+          write(sock, { t: "lh_graph", op: "history", runs: out.result.runs ?? [], ref: msg.ref });
+        } catch (error) {
+          fail(error instanceof Error ? error.message : String(error));
+        }
+        return;
+      }
       case "dream_get":
         write(sock, { t: "dream_status", status: dreamStatus(), ref: msg.ref });
         return;
@@ -1640,10 +1662,14 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
         return;
       }
       case "work_transcript": {
-        // Subagent mini-transcripts need @pi-unipi/subagents' transcript
-        // builder (TUI-flavoured); UNI-160 ships the live-log half (bg tasks)
-        // first and reports this a known gap (see the task report).
-        fail("Subagent transcripts aren't available yet.");
+        // UNI-282: a subagent's mini-transcript (work id `agent-<id>` or a
+        // graph step's operator id) from @pi-unipi/subagents' builder.
+        const out = workTranscript(msg.id);
+        if ("error" in out) return fail(out.error);
+        const items = out.items.slice(-400).map((item) =>
+          item.kind === "tool" ? { ...item, output: clipText(item.output, 8 * 1024) } : { ...item, text: clipText(item.text, 32 * 1024) },
+        );
+        write(sock, { t: "work_transcript", id: msg.id, items, ...(out.report !== undefined ? { report: clipText(out.report, 256 * 1024) } : {}), ref: msg.ref });
         return;
       }
       case "work_stop": {

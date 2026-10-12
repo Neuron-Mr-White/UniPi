@@ -272,6 +272,27 @@ export async function workLogPage(
   }
 }
 
+/** UNI-282: a subagent's mini-transcript (published by @pi-unipi/subagents). */
+export type WorkTranscriptItem =
+  | { kind: "task"; text: string }
+  | { kind: "text"; text: string }
+  | { kind: "tool"; name: string; arg: string; output: string; isError: boolean; running: boolean; durationMs?: number };
+
+const SUBAGENT_TRANSCRIPT_KEY = Symbol.for("unipi.subagents.transcript");
+
+/** Transcript items + final report of a subagent (work id `agent-<id>`, or a bare subagent id). */
+export function workTranscript(id: string): { items: WorkTranscriptItem[]; report?: string; status?: string } | { error: string } {
+  const [kind, rest] = splitId(id);
+  const agentId = kind === "agent" ? rest : kind === "bg" || kind === "sidekick" ? undefined : id;
+  if (agentId === undefined) return { error: "Only subagents have a transcript." };
+  const read = (globalThis as unknown as Record<symbol, unknown>)[SUBAGENT_TRANSCRIPT_KEY] as
+    | ((id: string) => { items: WorkTranscriptItem[]; report?: string; status?: string } | undefined)
+    | undefined;
+  if (!read) return { error: "Subagents are not available." };
+  const out = read(agentId);
+  return out ?? { error: "That subagent is gone." };
+}
+
 // ── change signal ────────────────────────────────────────────────────────
 //
 // A cheap "something in the work list might have changed" notifier so a TUI

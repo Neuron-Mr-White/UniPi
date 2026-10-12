@@ -202,3 +202,13 @@ describe("UNI-269 lh_mode", () => {
     assert.deepEqual(hello.lhMode, { mode: "swarm", paused: "graph", owner: { kind: "graph", status: "parked" } });
   });
 });
+
+describe("parseIn lh_graph (UNI-282)", () => {
+  it("accepts output/stop/history and rejects the rest", () => {
+    assert.deepEqual(parseIn('{"t":"lh_graph","op":"output","id":"r-a","graphId":"g1","ref":"r"}'), { t: "lh_graph", op: "output", id: "r-a", graphId: "g1", ref: "r" });
+    assert.deepEqual(parseIn('{"t":"lh_graph","op":"stop","ref":"r"}'), { t: "lh_graph", op: "stop", ref: "r" });
+    assert.deepEqual(parseIn('{"t":"lh_graph","op":"history"}'), { t: "lh_graph", op: "history", ref: undefined });
+    assert.deepEqual(parseIn('{"t":"lh_graph","op":"output","ref":"r"}'), { bad: "lh_graph output needs id", ref: "r" });
+    assert.deepEqual(parseIn('{"t":"lh_graph","op":"drop","ref":"r"}'), { bad: "lh_graph.op must be output|stop|history", ref: "r" });
+  });
+});
