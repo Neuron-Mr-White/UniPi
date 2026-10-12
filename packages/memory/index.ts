@@ -304,7 +304,27 @@ export default function (pi: ExtensionAPI) {
     pendingTimer.unref?.();
 
     if (migrating && ctx.hasUI) {
-      ctx.ui.notify("v2 memories found — run /unipi:memory migrate to convert them (backups included).", "info");
+      // UNI-272: the first session after the upgrade ASKS once (not just a
+      // notice that is easy to miss); "Later" keeps the notice + footer hint.
+      const askedFile = join(memoryRoot(), ".v3-migrate-asked");
+      if (!fs.existsSync(askedFile) && typeof ctx.ui.confirm === "function") {
+        try {
+          fs.mkdirSync(memoryRoot(), { recursive: true });
+          fs.writeFileSync(askedFile, new Date().toISOString());
+        } catch {
+          // can't record it — we may ask again next session; harmless
+        }
+        void (async () => {
+          const yes = await ctx.ui.confirm(
+            "UniPi 3: convert your memories?",
+            "Your memories are in the UniPi 2 format. Converting makes them searchable again with the new memory system. Backups are made first and nothing is deleted. You can also do it later with /unipi:memory migrate.",
+          ).catch(() => false);
+          if (yes) pi.sendUserMessage("/unipi:memory migrate");
+          else ctx.ui.notify("OK — run /unipi:memory migrate whenever you like (backups included).", "info");
+        })();
+      } else {
+        ctx.ui.notify("v2 memories found — run /unipi:memory migrate to convert them (backups included).", "info");
+      }
     }
 
     // ── background upkeep ──────────────────────────────────────────────

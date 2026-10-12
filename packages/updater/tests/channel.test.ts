@@ -15,6 +15,7 @@ import {
   resolveChannel,
   pickChannelVersion,
   installSpec,
+  pickInstallTag,
   readUnipiPackageSpec,
 } from "../src/channel.ts";
 
@@ -52,6 +53,20 @@ describe("channel resolution", () => {
     assert.equal(pickChannelVersion({ latest: "2.20.5" }, "alpha"), "2.20.5");
     assert.equal(pickChannelVersion({}, "alpha"), null);
     assert.equal(pickChannelVersion(undefined, "alpha"), null);
+  });
+
+  it("UNI-272: graduation installs from latest, not the alpha tag", () => {
+    // 3.0.0 stable out: an alpha install is offered 3.0.0 and must install `latest`.
+    assert.equal(pickInstallTag({ latest: "3.0.0", alpha: "3.0.0-alpha.40" }, "alpha"), "latest");
+    assert.equal(installSpec(pickInstallTag({ latest: "3.0.0", alpha: "3.0.0-alpha.40" }, "alpha")), "npm:@pi-unipi/unipi");
+    // Still in alpha: stay on alpha.
+    assert.equal(pickInstallTag({ latest: "2.20.5", alpha: "3.0.0-alpha.40" }, "alpha"), "alpha");
+    // Both tags point at the same version (alpha re-pointed to stable): keep the install's own tag.
+    assert.equal(pickInstallTag({ latest: "3.0.0", alpha: "3.0.0" }, "alpha"), "alpha");
+    // A later alpha above stable: stay on alpha.
+    assert.equal(pickInstallTag({ latest: "3.0.0", alpha: "3.1.0-alpha.1" }, "alpha"), "alpha");
+    assert.equal(pickInstallTag({ latest: "3.0.0" }, "latest"), "latest");
+    assert.equal(pickInstallTag(undefined, "alpha"), "alpha");
   });
 
   it("install spec keeps the channel", () => {
@@ -137,6 +152,17 @@ describe("checkForUpdates on a channel (fake registry)", () => {
     const r = await checkForUpdates({ fetchImpl, currentVersion: "3.0.0-alpha.36", channel: "alpha", force: true });
     assert.equal(r.latestVersion, "3.0.0-alpha.38");
     assert.equal(r.updateAvailable, true);
+  });
+
+  it("UNI-272: an alpha install offered 3.0.0 stable installs from latest (and the cache remembers it)", async () => {
+    const { fetchImpl } = registry({ latest: "3.0.0", alpha: "3.0.0-alpha.40" });
+    const r = await checkForUpdates({ fetchImpl, currentVersion: "3.0.0-alpha.40", channel: "alpha", force: true });
+    assert.equal(r.updateAvailable, true);
+    assert.equal(r.latestVersion, "3.0.0");
+    assert.equal(r.channel, "alpha");
+    assert.equal(r.installTag, "latest");
+    const cached = await checkForUpdates({ fetchImpl: (async () => { throw new Error("offline"); }) as unknown as typeof fetch, currentVersion: "3.0.0-alpha.40", channel: "alpha" });
+    assert.equal(cached.installTag, "latest");
   });
 
   it("stable install still follows latest", async () => {

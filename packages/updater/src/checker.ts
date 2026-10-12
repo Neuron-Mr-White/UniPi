@@ -12,7 +12,7 @@ import { getInstalledPackageVersion } from "@pi-unipi/core";
 import { loadConfig } from "./settings.js";
 import { readLastCheck, writeLastCheck, isCheckDue } from "./cache.js";
 import { compareVersions, isNewerVersion } from "./version.js";
-import { pickChannelVersion, readUnipiPackageSpec, resolveChannel, UNIPI_PACKAGE } from "./channel.js";
+import { pickChannelVersion, pickInstallTag, readUnipiPackageSpec, resolveChannel, UNIPI_PACKAGE } from "./channel.js";
 import type { UpdateCheckResult } from "../types.js";
 
 /** npm registry base; `UNIPI_UPDATER_REGISTRY` overrides it (tests / mirrors). */
@@ -34,12 +34,13 @@ export function currentChannel(currentVersion = getInstalledVersion()): string {
 }
 
 /** Build an update result without ever reporting downgrades as updates. */
-function toUpdateResult(latestVersion: string, currentVersion: string, channel: string): UpdateCheckResult {
+function toUpdateResult(latestVersion: string, currentVersion: string, channel: string, installTag?: string): UpdateCheckResult {
   return {
     updateAvailable: isNewerVersion(latestVersion, currentVersion),
     latestVersion,
     currentVersion,
     channel,
+    installTag: installTag ?? channel,
   };
 }
 
@@ -69,7 +70,7 @@ export async function checkForUpdates(opts: CheckOptions = {}): Promise<UpdateCh
     const cache = readLastCheck();
     if (!opts.force && cache && (cache.channel ?? "latest") === channel && !isCheckDue(config.checkIntervalMs)) {
       if (compareVersions(cache.latestVersion, currentVersion) >= 0) {
-        return toUpdateResult(cache.latestVersion, currentVersion, channel);
+        return toUpdateResult(cache.latestVersion, currentVersion, channel, cache.installTag);
       }
     }
 
@@ -87,6 +88,7 @@ export async function checkForUpdates(opts: CheckOptions = {}): Promise<UpdateCh
     // The dist-tags endpoint returns the map itself; the full packument nests it.
     const tags = (body["dist-tags"] ?? body) as Record<string, string>;
     const latestVersion = pickChannelVersion(tags, channel);
+    const installTag = pickInstallTag(tags, channel);
 
     if (!latestVersion) {
       throw new Error(`No dist-tag "${channel}" in npm response`);
@@ -96,10 +98,11 @@ export async function checkForUpdates(opts: CheckOptions = {}): Promise<UpdateCh
       lastCheck: new Date().toISOString(),
       latestVersion,
       channel,
+      installTag,
       skippedVersion: cache?.skippedVersion,
     });
 
-    return toUpdateResult(latestVersion, currentVersion, channel);
+    return toUpdateResult(latestVersion, currentVersion, channel, installTag);
   } catch (err: unknown) {
     // Network error — reuse cached info for this channel only, and never
     // suggest a downgrade from a stale cache.
@@ -110,6 +113,7 @@ export async function checkForUpdates(opts: CheckOptions = {}): Promise<UpdateCh
       latestVersion: usable?.latestVersion ?? "",
       currentVersion,
       channel,
+      installTag: usable?.installTag ?? channel,
       error: err instanceof Error ? err.message : String(err) || "Unknown error",
     };
   }

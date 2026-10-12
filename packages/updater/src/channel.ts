@@ -81,6 +81,19 @@ export function pickChannelVersion(distTags: Record<string, string> | undefined,
   return candidates.reduce((best, v) => (compareVersions(v, best) > 0 ? v : best));
 }
 
+/**
+ * UNI-272: which dist-tag the picked version came from. An alpha install
+ * offered 3.0.0 from `latest` (graduation) must install `latest` — installing
+ * `@alpha` again would reinstall the alpha it already has, and keep the
+ * install on the alpha channel forever. Ties go to the install's own channel.
+ */
+export function pickInstallTag(distTags: Record<string, string> | undefined, channel: string): string {
+  const picked = pickChannelVersion(distTags, channel);
+  if (!picked || !distTags) return channel;
+  if (distTags[channel] === picked) return channel;
+  return distTags.latest === picked ? "latest" : channel;
+}
+
 /** The `pi install` source for this channel. */
 export function installSpec(channel: string): string {
   return channel === "latest" ? `npm:${UNIPI_PACKAGE}` : `npm:${UNIPI_PACKAGE}@${channel}`;

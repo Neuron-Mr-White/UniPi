@@ -22,6 +22,8 @@ export interface LastCheckCache {
   skippedVersion?: string;
   /** npm dist-tag the check followed (absent in pre-UNI-262 caches = "latest") */
   channel?: string;
+  /** UNI-272: dist-tag to install the offered version from (≠ channel on graduation). */
+  installTag?: string;
 }
 
 /** A parsed changelog version entry */
@@ -58,6 +60,9 @@ export interface UpdateCheckResult {
   currentVersion: string;
   /** npm dist-tag this install follows ("alpha", "latest", …) */
   channel?: string;
+  /** UNI-272: the dist-tag the offered version comes from — install from this
+   * (an alpha install offered 3.0.0 stable installs `latest`, leaving alpha). */
+  installTag?: string;
   /** Error message if check failed */
   error?: string;
 }

@@ -93,7 +93,8 @@ export function renderUpdateOverlay(checkResult: UpdateCheckResult, providedNewe
       state.installing = true;
       tui.requestRender();
 
-      const result = await installUpdate(state.result.channel ?? "latest");
+      // UNI-272: the tag the offered version came from (alpha → 3.0.0 stable installs `latest`).
+      const result = await installUpdate(state.result.installTag ?? state.result.channel ?? "latest");
       if (result.success) {
         done({ updated: true });
       } else {
