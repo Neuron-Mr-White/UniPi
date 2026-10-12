@@ -32,9 +32,20 @@ import {
   renderKickoff,
 } from "../prompts/goal.js";
 import type { OwnerCoordinator } from "../owner.js";
+import {
+  attachTaskReminder,
+  GoalTaskGatePolicy,
+  type GoalTaskGateDecision,
+  type GoalTaskGateDeps,
+} from "./task-gate.js";
 
 export const WAIT_BACKOFF_BASE_MS = 5_000;
 export const WAIT_BACKOFF_MAX_MS = 5 * 60_000;
+/**
+ * Restart re-deliveries of one durable pending continuation before the goal
+ * is paused as `paused(recovery_exhausted)` (bounded crash recovery).
+ */
+export const MAX_RECOVERY_REDELIVERIES = 2;
 
 export interface TurnActivity {
   /** Tool calls made this turn (0 → NO_TOOL_NUDGE candidate). */
@@ -47,6 +58,12 @@ export interface TurnActivity {
   readonly recentTail: readonly { readonly role: string; readonly text: string }[];
   /** Worker/host signal: the turn is blocked on an external event (CI, deploy). */
   readonly waiting?: boolean;
+  /**
+   * The turn was aborted by the user (Esc). The settlement still runs, but the
+   * next prompt is NOT persisted as a pending continuation — a restart must
+   * not re-drive a goal the user just interrupted.
+   */
+  readonly aborted?: boolean;
 }
 
 export interface ContinuationDeps {
@@ -72,14 +89,32 @@ export interface ContinuationDeps {
   /** Kanboard claims reminder appended to continuation messages (UNI-123b);
    *  null/empty when the board is clean. Never rides kickoff/wrap-up/wakes. */
   boardLine?(): string | null;
+  /**
+   * Session todo list for the task gate (Maka GoalTaskGatePolicy): pending /
+   * in_progress items turn a completion claim into a bounded "[Task reminder]"
+   * continuation instead of a verifier run.
+   */
+  taskGate?: GoalTaskGateDeps;
+  /** Best-effort task-gate decision trace (Maka recordDecision). */
+  onTaskGateDecision?(trace: { goalId: string; decision: GoalTaskGateDecision; tasks: readonly string[] }): void;
   getTokenCount?(): number | undefined;
   now?(): number;
   schedule?(callback: () => void, delayMs: number): void;
 }
 
+/** What session_start recovery decided for a restored goal. */
+export type RestartRecovery =
+  /** A durable pending continuation exists: deliver `text` now (attempt recorded). */
+  | { action: "redeliver"; text: string; attempt: number }
+  /** No pending prompt: the recovery fragment rides the next continuation. */
+  | { action: "armed" }
+  /** Re-delivery budget spent: the goal was paused. */
+  | { action: "exhausted"; attempts: number }
+  | { action: "none" };
+
 export type ContinuationDecision =
   | { action: "none"; reason: "no-active-goal" | "kickoff-delivered" }
-  | { action: "continue"; via: "hint" | "nudge-no-progress" | "nudge-no-tool" | "terminal-audit" | "recovery" }
+  | { action: "continue"; via: "hint" | "nudge-no-progress" | "nudge-no-tool" | "terminal-audit" | "recovery" | "task-reminder" }
   | { action: "wait"; delayMs: number }
   | { action: "stopped"; terminal: string; wrapUp: boolean };
 
@@ -108,9 +143,85 @@ export class GoalContinuation {
   private readonly deps: ContinuationDeps;
   private tokenCounter?: () => number | undefined;
   private evaluateOverride?: VerifierDeps["evaluate"];
+  private readonly taskGate: GoalTaskGatePolicy;
 
   constructor(deps: ContinuationDeps) {
     this.deps = deps;
+    this.taskGate = new GoalTaskGatePolicy(deps.taskGate);
+  }
+
+  private traceTaskGate(goalId: string, decision: GoalTaskGateDecision, tasks: readonly string[]): void {
+    try {
+      this.deps.onTaskGateDecision?.({ goalId, decision, tasks });
+    } catch {
+      // Tracing is best-effort (Maka).
+    }
+  }
+
+  /**
+   * Persist-then-deliver (Maka durable continuation outbox): the prompt lands
+   * in goal.json as `pendingContinuation` BEFORE it reaches the nudge stash /
+   * sendNow. index.ts clears it once the turn it starts begins.
+   */
+  private deliver(goalId: string, message: string, options: { kind?: "kickoff"; direct?: boolean; persist?: boolean } = {}): void {
+    if (options.persist !== false) {
+      try {
+        this.deps.machine.recordPendingContinuation(goalId, message);
+      } catch {
+        // A failed outbox write must never block delivery.
+      }
+    }
+    if (options.direct) (this.deps.sendNow ?? this.deps.send)(message);
+    else if (options.kind) this.deps.send(message, options.kind);
+    else this.deps.send(message);
+  }
+
+  /**
+   * session_start recovery for a restored goal (extends the recovery-fragment
+   * path). A durable pending continuation is re-delivered — prefixed with the
+   * recovery fragment — at most MAX_RECOVERY_REDELIVERIES times; after that
+   * the goal pauses as `paused(recovery_exhausted)`. Without one, the
+   * recovery fragment is armed for the next continuation (unchanged).
+   * The caller delivers `text` (sendNow, outside any turn).
+   */
+  recoverOnRestart(): RestartRecovery {
+    const machine = this.deps.machine;
+    const goal = machine.get();
+    if (!goal || (goal.status !== "active" && goal.status !== "waiting")) return { action: "none" };
+    const pending = goal.pendingContinuation;
+    // Only an owner that actually drives the goal (goal / ralph-loop, active,
+    // not parked) may be re-driven; otherwise the outbox entry is stale.
+    const driver = this.deps.owner.getActive();
+    if (pending && (!driver || (driver.kind !== "goal" && driver.kind !== "ralph-loop"))) {
+      machine.clearPendingContinuation();
+      this.armRecovery();
+      return { action: "armed" };
+    }
+    if (!pending) {
+      this.armRecovery();
+      return { action: "armed" };
+    }
+    if (pending.attempts >= MAX_RECOVERY_REDELIVERIES) {
+      const reason = "paused(recovery_exhausted)" as const;
+      const paused = machine.pause(reason);
+      const active = this.deps.owner.getActive();
+      if (paused && active && (active.kind === "goal" || active.kind === "ralph-loop")) {
+        if (!this.deps.owner.suspend(reason)) this.deps.owner.finish(reason);
+      }
+      this.recoveryArmed = false;
+      this.inform(
+        `Goal continuation could not be re-delivered after ${pending.attempts} restarts — goal paused. /unipi:goal resume to continue.`,
+      );
+      return { action: "exhausted", attempts: pending.attempts };
+    }
+    // A waiting goal's wake timer died with the process: wake it now.
+    const current = goal.status === "waiting" ? (machine.wakeWaiting() ?? goal) : goal;
+    const text = pending.text.startsWith(RECOVERY_FRAGMENT) ? pending.text : `${RECOVERY_FRAGMENT}\n\n${pending.text}`;
+    const attempt = pending.attempts + 1;
+    machine.recordPendingContinuation(current.goalId, text, attempt);
+    // The fragment rides this prompt; don't repeat it on the next hint.
+    this.recoveryArmed = false;
+    return { action: "redeliver", text, attempt };
   }
 
   /** Late-bound token counter (runtime wiring sets it per agent_end). */
@@ -147,8 +258,9 @@ export class GoalContinuation {
 
   /** Deliver the kickoff contract once for a fresh goal (cache-stable). */
   deliverKickoff(goal: GoalState): void {
-    this.deps.send(renderKickoff(goal.objective), "kickoff");
+    // Mark first: the transition would otherwise drop the outbox entry.
     this.deps.machine.markKickoffDelivered(goal.goalId);
+    this.deliver(goal.goalId, renderKickoff(goal.objective), { kind: "kickoff" });
     this.consecutiveWaits = 0;
     this.lastVerifierReason = undefined;
   }
@@ -180,7 +292,26 @@ export class GoalContinuation {
     const tokensNow = this.tokenCounter?.() ?? this.deps.getTokenCount?.();
 
     let settled: GoalState | undefined;
+    // Task gate (Maka goal-task-gate-policy): open todowrite items turn a
+    // completion claim into a bounded reminder continuation, no verdict.
+    let taskReminder: string | undefined;
+    let taskGatePlan: ReturnType<GoalTaskGatePolicy["planAdmission"]> | undefined;
     if (proposal?.kind === "completion") {
+      taskGatePlan = this.taskGate.planAdmission(goal.goalId);
+      this.traceTaskGate(goal.goalId, taskGatePlan.decision, taskGatePlan.tasks);
+      if (taskGatePlan.decision === "reminder_injected") taskReminder = taskGatePlan.reminder;
+    }
+    if (proposal?.kind === "completion" && taskReminder !== undefined) {
+      // The claim is not evaluated: settle the turn like any working turn.
+      settled = machine.settleTurn({
+        goalId: goal.goalId,
+        revision: goal.revision,
+        madeProgress: activity.toolCalls > 0 ? true : undefined,
+        ...(tokensNow !== undefined ? { tokensNow } : {}),
+        ...(tokensNow !== undefined ? { tokensEstimated: this.tokensEstimated } : {}),
+      });
+      this.tokensEstimated = false;
+    } else if (proposal?.kind === "completion") {
       const brief = assembleEvidenceBrief({
         objective: goal.objective,
         objectiveDigest: goal.objectiveDigest,
@@ -258,6 +389,11 @@ export class GoalContinuation {
     // Terminal → stop the owner; PAUSED → park it (resumable via
     // /unipi:goal resume); budget_limited adds a wrap-up turn.
     if (settled.status !== "active" && settled.status !== "waiting") {
+      this.traceTaskGate(
+        goal.goalId,
+        settled.status === "complete" || settled.reason === "blocked(verifier_impossible)" ? "evaluator_terminal" : "goal_stopped",
+        settled.status === "complete" ? [] : this.taskGate.listActionable(),
+      );
       const terminal = settled.reason ?? settled.status;
       const wrapUp = settled.status === "budget_limited" && !machine.isWrapUpDelivered(settled);
       if (wrapUp) machine.markWrapUpDelivered(settled.goalId, settled.revision);
@@ -274,6 +410,15 @@ export class GoalContinuation {
 
     // Waiting: schedule the wake with exponential backoff.
     if (settled.status === "waiting") {
+      // Maka records the outbox for waiting goals too: the wake timer dies
+      // with the process, the durable prompt does not.
+      if (!activity.aborted) {
+        try {
+          machine.recordPendingContinuation(settled.goalId, renderContinuationHint(settled));
+        } catch {
+          // best-effort
+        }
+      }
       this.consecutiveWaits += 1;
       const delayMs = waitBackoffMs(this.consecutiveWaits);
       this.deps.schedule?.(() => {
@@ -282,7 +427,7 @@ export class GoalContinuation {
           this.consecutiveWaits = 0;
           // Timer wake while idle: an event, delivered directly — never
           // through the stash (nothing will settle to drain it).
-          (this.deps.sendNow ?? this.deps.send)(renderContinuationHint(woken));
+          this.deliver(woken.goalId, renderContinuationHint(woken), { direct: true });
         }
       }, delayMs);
       return { action: "wait", delayMs };
@@ -296,7 +441,24 @@ export class GoalContinuation {
     // kickoff, wrap-up, or timer wakes).
     const boardLine = this.deps.boardLine?.() ?? null;
     const sendContinuation = (message: string): void =>
-      this.deps.send(boardLine ? `${message}\n\n${boardLine}` : message);
+      this.deliver(settled.goalId, boardLine ? `${message}\n\n${boardLine}` : message, { persist: !activity.aborted });
+    if (activity.aborted) {
+      // Interrupted turn: never leave an outbox entry a restart would re-drive.
+      try {
+        machine.clearPendingContinuation();
+      } catch {
+        // best-effort
+      }
+    }
+    if (taskReminder !== undefined && taskGatePlan) {
+      const hint = hintKind === "recovery" ? `${RECOVERY_FRAGMENT}\n\n${renderContinuationHint(settled)}` : renderContinuationHint(settled);
+      sendContinuation(
+        `${attachTaskReminder(hint, taskReminder)}\n\n` +
+          "Your completion claim was not evaluated: reconcile the task list first, then call update_goal again if the objective is met.",
+      );
+      this.taskGate.markStarted(settled.goalId, taskGatePlan);
+      return { action: "continue", via: "task-reminder" };
+    }
     switch (hintKind) {
       case "recovery":
         sendContinuation(RECOVERY_FRAGMENT);

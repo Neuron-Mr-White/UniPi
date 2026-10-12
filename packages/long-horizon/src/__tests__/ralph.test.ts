@@ -11,6 +11,7 @@ import {
 } from "../engine/ralph.js";
 import { GoalMachine } from "../engine/goal-state.js";
 import { OwnerCoordinator } from "../owner.js";
+import { registerRalphTools } from "../tools/ralph.js";
 import { normalizeTodoItem, renderTodoLine, validateTodoList, TodoStore } from "../tools/todo.js";
 
 // ── todowrite ────────────────────────────────────────────────────────────
@@ -180,5 +181,110 @@ test("restore reloads loop state from disk (migration path)", () => {
   const restored = revived.restore("legacy");
   assert.equal(restored?.name, "legacy");
   assert.equal(restored?.iteration, 1);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+// ── UNI-283: restart restore + real task-file path ───────────────────────
+
+function revive(dir: string) {
+  const machine = new GoalMachine({ statePath: () => join(dir, "goal.json") });
+  const owner = new OwnerCoordinator({ statePath: () => join(dir, "owner.json") });
+  const sent: string[] = [];
+  const loop = new RalphLoop({ machine, owner, ralphDir: () => join(dir, "ralph"), send: (m) => sent.push(m) });
+  // Same order as index.ts session_start.
+  owner.restore();
+  machine.restore();
+  return { machine, owner, loop, sent };
+}
+
+test("restoreFromOwner: after a restart ralph_done works again (no 'no active loop')", () => {
+  const { loop, dir } = rig();
+  loop.start("my loop", "- [ ] a\n- [ ] b", { itemsPerIteration: 1 });
+  writeFileSync(join(dir, "ralph", "my-loop.md"), "- [x] a\n- [ ] b", "utf-8");
+
+  const after = revive(dir);
+  assert.equal(after.loop.get(), null, "pre-fix: nothing restored");
+  const result = after.loop.restoreFromOwner();
+  assert.equal(result.kind, "restored");
+  assert.equal(after.loop.get()?.name, "my-loop");
+  assert.equal(after.loop.get()?.goalId, after.machine.get()?.goalId, "loop, goal and owner agree");
+  assert.equal(after.owner.getActive()?.kind, "ralph-loop");
+  const done = after.loop.onRalphDone();
+  assert.equal(done.ok, true);
+  if (done.ok) assert.match(done.prompt ?? "", /Iteration 2/);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("restoreFromOwner: a parked ralph owner restores the loop too (resume works)", () => {
+  const { loop, owner, dir } = rig();
+  loop.start("parked", "- [ ] a");
+  owner.suspend("paused(user_requested)");
+  const after = revive(dir);
+  assert.equal(after.loop.restoreFromOwner().kind, "restored");
+  assert.equal(after.owner.getParked()?.kind, "ralph-loop");
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("restoreFromOwner: orphaned ralph owner (loop file gone / goal finished) is retired", () => {
+  const { loop, machine, dir } = rig();
+  loop.start("gone", "- [ ] a");
+  rmSync(join(dir, "ralph", "gone.state.json"));
+  let after = revive(dir);
+  assert.deepEqual(after.loop.restoreFromOwner(), { kind: "orphaned", reason: "loop state missing" });
+  assert.equal(after.owner.getActive(), undefined, "the slot is freed, not wedged");
+  assert.equal(after.loop.get(), null);
+
+  // Goal already terminal while the owner was still recorded active.
+  const second = rig();
+  second.loop.start("done", "- [ ] a");
+  second.machine.clear();
+  after = revive(second.dir);
+  assert.deepEqual(after.loop.restoreFromOwner(), { kind: "orphaned", reason: "loop goal complete" });
+  assert.equal(after.owner.getActive(), undefined);
+  void machine;
+  rmSync(dir, { recursive: true, force: true });
+  rmSync(second.dir, { recursive: true, force: true });
+});
+
+test("restoreFromOwner: no ralph owner → no loop (a goal owner never adopts loop files)", () => {
+  const { loop, owner, dir } = rig();
+  loop.start("x", "- [ ] a");
+  owner.finish("stopped(user_requested)");
+  owner.activate("goal", "other");
+  const after = revive(dir);
+  assert.deepEqual(after.loop.restoreFromOwner(), { kind: "none" });
+  assert.equal(after.loop.get(), null);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("model-facing task-file path is the real ralphDir path, not .unipi/ralph", () => {
+  const { loop, machine, sent, dir } = rig();
+  loop.start("Path Check", "- [ ] a\n- [ ] b", { itemsPerIteration: 1 });
+  const real = join(dir, "ralph", "path-check.md");
+  assert.equal(loop.taskFilePath("Path Check"), real);
+  assert.ok((sent[0] ?? "").includes(`Task file: ${real} `), "iteration prompt names the real file");
+  assert.ok(!(sent[0] ?? "").includes(".unipi/ralph"));
+  assert.ok(machine.get()?.objective.includes(real), "goal objective (verifier input) names the real file");
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("loop_status tool reports the real task-file path", async () => {
+  const { loop, dir } = rig();
+  loop.start("tool path", "- [ ] a");
+  const tools: Array<{ name: string; execute: (...args: unknown[]) => Promise<{ content: Array<{ text: string }> }> }> = [];
+  registerRalphTools({ registerTool: (tool: never) => tools.push(tool) } as never, loop);
+  const status = await tools.find((t) => t.name === "loop_status")!.execute("id", {});
+  const parsed = JSON.parse(status.content[0]!.text);
+  assert.equal(parsed.task_file, join(dir, "ralph", "tool-path.md"));
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("ralph iteration prompts are persisted as the goal's pending continuation", () => {
+  const { loop, machine, sent, dir } = rig();
+  loop.start("outbox", "- [ ] a\n- [ ] b", { itemsPerIteration: 1 });
+  assert.equal(machine.get()?.pendingContinuation?.text, sent[0]);
+  writeFileSync(join(dir, "ralph", "outbox.md"), "- [x] a\n- [ ] b", "utf-8");
+  loop.onRalphDone();
+  assert.equal(machine.get()?.pendingContinuation?.text, sent.at(-1));
   rmSync(dir, { recursive: true, force: true });
 });

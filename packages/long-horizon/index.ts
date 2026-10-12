@@ -212,6 +212,13 @@ export default function longHorizon(pi: ExtensionAPI): void {
   try {
     pi.on("agent_start", () => {
       runActive = true;
+      // UNI-283: the turn a pending goal continuation started has begun (or
+      // newer work outranks it, Maka) — drop the durable outbox entry.
+      try {
+        machine.clearPendingContinuation();
+      } catch {
+        // Outbox bookkeeping must never block a turn.
+      }
     });
     pi.on("agent_settled", () => {
       runActive = false;
@@ -224,6 +231,12 @@ export default function longHorizon(pi: ExtensionAPI): void {
     kind,
     meta,
   ) => {
+    // Idle (e.g. /unipi:ralph start from an empty prompt, a kanboard runner):
+    // nothing will settle to drain the stash, so the prompt is sent now.
+    if (!runActive) {
+      sendNow(message, meta ?? { source: "Goal", title: kind === "kickoff" ? "Kickoff" : "Continuation" });
+      return;
+    }
     const next = nextStashMetaState(stashMetaState, stash.peek() !== null, kind, harnessMetadata(meta ?? { source: "Goal", title: kind === "kickoff" ? "Kickoff" : "Continuation" }, "boundary"));
     stashMetaState = next;
     stash.put(message, kind === "kickoff" ? { kickoff: true } : {});
@@ -255,6 +268,12 @@ export default function longHorizon(pi: ExtensionAPI): void {
         onDelivered: () => {
           stash.take();
           stashMetaState = { meta: undefined, kickoff: false };
+          // Delivered as the continuing turn's prompt: clear the outbox.
+          try {
+            machine.clearPendingContinuation();
+          } catch {
+            // Never block delivery.
+          }
         },
       };
     });
@@ -282,12 +301,23 @@ export default function longHorizon(pi: ExtensionAPI): void {
     sendNow,
     // UNI-123b: goal continuations carry the kanboard board contract.
     boardLine: () => kanboardClaimsReminder(bus.get(UNIPI_EVENTS.KANBOARD_STATUS)),
+    // UNI-283: open todowrite items gate a completion claim (Maka task gate).
+    taskGate: {
+      listActionableTasks: () =>
+        todoStore
+          .get()
+          .filter((item) => item.status === "pending" || item.status === "in_progress")
+          .map((item) => `${item.status === "in_progress" ? "[in_progress] " : ""}${item.content}`),
+    },
   });
   // Ralph loop rides the same goal machine + verifier; footer events preserved.
+  // ralphDir is the single source of truth for the task-file path the model
+  // is told about (UNI-283).
+  const ralphDir = (): string => join(stateDir("long-horizon", "state"), "ralph");
   const ralph = new RalphLoop({
     machine,
     owner,
-    ralphDir: () => join(stateDir("long-horizon", "state"), "ralph"),
+    ralphDir,
     // Iteration prompts ride the arbiter's nudge stash like the goal's.
     send: (message, kind) => send(message, kind, { source: "Ralph", title: "Iteration", synopsis: "Loop iteration prompt" }),
     onEvent: (event) => {
@@ -388,7 +418,7 @@ export default function longHorizon(pi: ExtensionAPI): void {
   registerVisualizeProgress(pi);
   // Compaction summaries lead with the live goal / ralph state.
   registerCompactionContext("long-horizon", () =>
-    longHorizonCompactionBrief(machine.getActive(), ralph.get(), join(stateDir("long-horizon", "state"), "ralph")),
+    longHorizonCompactionBrief(machine.getActive(), ralph.get(), ralphDir()),
   );
 
   // Cross-module entry points: another module (kanboard's runner) can start a
@@ -536,7 +566,7 @@ export default function longHorizon(pi: ExtensionAPI): void {
   // Crash recovery: repair, don't resume — reload durable state so the gate
   // reattaches the owner's tool surface; the continuation arms a recovery
   // fragment for the first post-restart turn.
-  pi.on("session_start", (event) => {
+  pi.on("session_start", (event, ctx) => {
     // A sticky mode belongs to the session that picked it (UNI-165).
     const reason = (event as { reason?: string } | undefined)?.reason;
     if (reason === "new" || reason === "resume" || reason === "fork") gate.dropStickyWorkMode();
@@ -561,10 +591,29 @@ export default function longHorizon(pi: ExtensionAPI): void {
       }
       graphEngine.reconcile();
     }
-    // Only a truly drivable goal arms the recovery fragment; a paused goal
-    // must come back idle until the user (or the kanboard runner) resumes it.
+    // UNI-283: reload the ralph loop the restored owner names (ralph_done
+    // otherwise fails "no active loop" after a restart); an orphaned ralph
+    // owner (loop/goal gone or finished) is retired so the states agree.
+    ralph.restoreFromOwner();
+    // Only a truly drivable goal recovers; a paused goal must come back idle
+    // until the user (or the kanboard runner) resumes it. A durable pending
+    // continuation (persisted before delivery) is re-delivered, bounded;
+    // otherwise the recovery fragment rides the next continuation.
     const goalStatus = machine.get()?.status;
-    if (goalStatus === "active" || goalStatus === "waiting") continuation.armRecovery();
+    if (goalStatus === "active" || goalStatus === "waiting") {
+      // Goal state is workspace-keyed: a /new or forked session must not be
+      // driven by another session's undelivered prompt (fragment only).
+      // Print mode (no UI) owns its own prompt: never race it with a wake.
+      const redeliver = !isChildProcess() && reason !== "new" && reason !== "fork" && (ctx as { hasUI?: boolean } | undefined)?.hasUI !== false;
+      const recovery = redeliver ? continuation.recoverOnRestart() : (continuation.armRecovery(), undefined);
+      if (recovery?.action === "redeliver") {
+        // Outside any turn: a direct wake once startup has finished.
+        setTimeout(() => {
+          if (machine.get()?.pendingContinuation?.text !== recovery.text) return; // superseded
+          sendNow(recovery.text, { source: "Goal", title: "Recovery", synopsis: `Pending continuation re-delivered (attempt ${recovery.attempt})` });
+        }, 0);
+      }
+    }
     // Resume (`pi -r`) starts no turn, so before_agent_start never fires.
     // Publish unconditionally so the header restores without depending on a
     // one-shot event beating the footer's subscription.

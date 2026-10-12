@@ -10,7 +10,7 @@ import { OwnerCoordinator } from "../owner.js";
 import { Gate } from "../gate.js";
 import { GoalContinuation } from "../engine/continuation.js";
 import { DEFAULT_SETTINGS } from "../settings.js";
-import { registerLongHorizonCommands } from "../commands.js";
+import { registerLongHorizonCommands, stopActiveOwner } from "../commands.js";
 
 interface Handler {
   handler: (args: string, ctx: never) => Promise<void>;
@@ -310,4 +310,18 @@ test("UNI-269: the active owner's own mode is a no-op; a held park slot refuses;
   assert.match(refused.reason ?? "", /graph \("g1"\) is already parked/);
   assert.equal(r.owner.getActive()?.kind, "swarm", "the active owner keeps the session");
   assert.deepEqual(await selectMode("plan"), { ok: false, reason: 'unknown mode "plan"' });
+});
+
+test("stopping a ralph loop also ends its checklist goal (a later /unipi:goal must not resume it)", () => {
+  const dir = mkdtempSync(join(tmpdir(), "lh-stop-ralph-"));
+  const owner = new OwnerCoordinator({ statePath: () => join(dir, "owner.json") });
+  const machine = new GoalMachine({ statePath: () => join(dir, "goal.json") });
+  const gate = new Gate({ owner, loadSettings: () => DEFAULT_SETTINGS });
+  machine.create("Complete every checklist item in chores.md");
+  owner.activate("ralph-loop", "chores");
+  const pi = { getActiveTools: () => [], setActiveTools: () => undefined } as never;
+  assert.ok(stopActiveOwner(pi, gate, owner, machine));
+  assert.equal(owner.getActive(), undefined);
+  assert.notEqual(machine.get()?.status, "active");
+  rmSync(dir, { recursive: true, force: true });
 });

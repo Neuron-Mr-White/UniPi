@@ -294,3 +294,53 @@ test("verifier_unavailable: an evaluator that failed twice pauses immediately", 
   assert.equal(state.reason, "paused(verifier_unavailable)");
   rmSync(dir, { recursive: true, force: true });
 });
+
+// ── UNI-283: durable pending continuation (Maka outbox) ─────────────────
+
+test("pending continuation persists to goal.json without moving the CAS pair", () => {
+  const { m: mm, path, dir } = machine();
+  mm.create("objective");
+  const before = mm.get()!;
+  const recorded = mm.recordPendingContinuation(before.goalId, "next prompt")!;
+  assert.equal(recorded.pendingContinuation?.text, "next prompt");
+  assert.equal(recorded.pendingContinuation?.attempts, 0);
+  assert.equal(recorded.pendingContinuation?.revision, before.revision);
+  // Outbox metadata, not a transition: revision/updatedAt unchanged.
+  assert.equal(recorded.revision, before.revision);
+  assert.equal(recorded.updatedAt, before.updatedAt);
+  // Durable: a fresh machine sees it.
+  const revived = new GoalMachine({ statePath: () => path });
+  assert.equal(revived.restore()?.pendingContinuation?.text, "next prompt");
+  // Cleared once delivered.
+  mm.clearPendingContinuation();
+  assert.equal(mm.get()?.pendingContinuation, undefined);
+  assert.equal(new GoalMachine({ statePath: () => path }).restore()?.pendingContinuation, undefined);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("pending continuation: any transition drops it; wrong goal / terminal goal refuse it", () => {
+  const { m: mm, dir } = machine();
+  mm.create("objective");
+  let goal = mm.get()!;
+  assert.equal(mm.recordPendingContinuation("other-goal", "x"), undefined);
+  mm.recordPendingContinuation(goal.goalId, "stale soon");
+  goal = mm.settleTurn({ goalId: goal.goalId, revision: goal.revision, madeProgress: true })!;
+  assert.equal(goal.pendingContinuation, undefined, "a settlement invalidates the old prompt");
+  mm.recordPendingContinuation(goal.goalId, "again");
+  mm.clear();
+  assert.equal(mm.get()?.pendingContinuation, undefined);
+  assert.equal(mm.recordPendingContinuation(goal.goalId, "after terminal"), undefined);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("pause accepts a waiting goal (recovery_exhausted pauses either drivable state)", () => {
+  const { m: mm, dir } = machine();
+  mm.create("objective");
+  let goal = mm.get()!;
+  goal = mm.settleTurn({ goalId: goal.goalId, revision: goal.revision, waiting: true })!;
+  assert.equal(goal.status, "waiting");
+  const paused = mm.pause("paused(recovery_exhausted)");
+  assert.equal(paused?.status, "paused");
+  assert.equal(paused?.reason, "paused(recovery_exhausted)");
+  rmSync(dir, { recursive: true, force: true });
+});

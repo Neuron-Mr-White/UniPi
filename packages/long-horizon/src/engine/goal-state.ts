@@ -59,6 +59,7 @@ export const GOAL_STATUS_REASONS = [
   "paused(verifier_inconclusive)",
   "paused(no_progress)",
   "paused(no_progress_after_completion_claim)",
+  "paused(recovery_exhausted)",
   "blocked(threshold_3turns)",
   "blocked(safety_policy)",
   "blocked(verifier_impossible)",
@@ -83,6 +84,23 @@ export const NOT_MET_STREAK_CAP = 5;
 export const INCONCLUSIVE_STREAK_CAP = 2;
 
 export const GOAL_CONDITION_LIMIT = { codeUnits: 500, utf8Bytes: 1_500 } as const;
+/** Bound on a durable pending-continuation prompt (Maka GOAL_PENDING_PROMPT_TEXT_LIMIT analogue). */
+export const PENDING_CONTINUATION_TEXT_LIMIT = 16_000;
+
+/**
+ * Durable continuation outbox entry (Maka `GoalPendingContinuation`): the
+ * next goal-driving prompt, written to goal.json BEFORE it is handed to the
+ * nudge stash / sendNow, cleared once the turn it starts begins. A restart
+ * that finds one re-delivers it (bounded by `attempts`).
+ */
+export interface GoalPendingContinuation {
+  readonly text: string;
+  /** Goal revision the prompt was rendered against (checkpoint). */
+  readonly revision: number;
+  /** Restart re-deliveries already attempted for this prompt. */
+  readonly attempts: number;
+  readonly recordedAt: string;
+}
 
 export interface GoalLease {
   readonly goalId: string;
@@ -121,6 +139,8 @@ export interface GoalState {
   readonly kickoffDelivered?: boolean;
   /** Revision at which the budget wrap-up turn was delivered (once). */
   readonly wrapUpDeliveredRevision?: number;
+  /** Undelivered next prompt (crash recovery outbox); see GoalPendingContinuation. */
+  readonly pendingContinuation?: GoalPendingContinuation;
 }
 
 export interface GoalSettlement {
@@ -264,7 +284,9 @@ export class GoalMachine {
 
   pause(reason: Extract<GoalStatusReason, `paused${string}`>): GoalState | undefined {
     const goal = this.goal;
-    if (!goal || goal.status !== "active") return undefined;
+    // A waiting goal (external event) is just as drivable as an active one:
+    // pausing it stops the wake timer from re-driving it.
+    if (!goal || (goal.status !== "active" && goal.status !== "waiting")) return undefined;
     const next = this.withGoal(goal, { status: "paused", reason, lease: renew(goal.lease) });
     this.goal = next;
     this.commit(next, goal.status);
@@ -332,6 +354,43 @@ export class GoalMachine {
     const next = this.withGoal(goal, { wrapUpDeliveredRevision: revision });
     this.goal = next;
     this.commit(next, goal.status);
+    return next;
+  }
+
+  // ── pending continuation (durable outbox) ───────────────────────────
+
+  /**
+   * Persist the next prompt BEFORE delivery. Outbox metadata, not a goal
+   * transition: the revision/updatedAt CAS pair is untouched (Maka records
+   * it beside the goal record, at the same revision). Any later transition
+   * (withGoal) drops it — a settled/paused/resumed goal renders a new one.
+   */
+  recordPendingContinuation(goalId: string, text: string, attempts = 0): GoalState | undefined {
+    const goal = this.goal;
+    if (!goal || goal.goalId !== goalId) return undefined;
+    if (goal.status !== "active" && goal.status !== "waiting") return undefined;
+    const next: GoalState = Object.freeze({
+      ...goal,
+      pendingContinuation: Object.freeze({
+        text: text.length > PENDING_CONTINUATION_TEXT_LIMIT ? text.slice(0, PENDING_CONTINUATION_TEXT_LIMIT) : text,
+        revision: goal.revision,
+        attempts: Math.max(0, attempts),
+        recordedAt: new Date(this.deps.now?.() ?? Date.now()).toISOString(),
+      }),
+    });
+    this.goal = next;
+    this.persist(next);
+    return next;
+  }
+
+  /** The prompt was delivered / its turn began: drop the outbox entry. */
+  clearPendingContinuation(): GoalState | undefined {
+    const goal = this.goal;
+    if (!goal || goal.pendingContinuation === undefined) return undefined;
+    const { pendingContinuation: _dropped, ...rest } = goal;
+    const next: GoalState = Object.freeze(rest);
+    this.goal = next;
+    this.persist(next);
     return next;
   }
 
@@ -521,18 +580,25 @@ export class GoalMachine {
   // ── internals ────────────────────────────────────────────────────────
 
   private withGoal(goal: GoalState, patch: Partial<GoalState>): GoalState {
+    // Every transition invalidates the outbox: the pending prompt was rendered
+    // against the previous revision (Maka keeps it only at the same revision).
+    const { pendingContinuation: _stale, ...base } = goal;
     return Object.freeze({
-      ...goal,
+      ...base,
       ...patch,
       revision: goal.revision + 1,
       updatedAt: this.nowIso(),
     });
   }
 
-  private commit(goal: GoalState, previous: GoalStatus | undefined): void {
+  private persist(goal: GoalState): void {
     const path = this.deps.statePath();
     ensureDir(path);
     writeJson(path, { version: 1, goal } satisfies StoredState);
+  }
+
+  private commit(goal: GoalState, previous: GoalStatus | undefined): void {
+    this.persist(goal);
     this.deps.onChange?.(goal, previous);
   }
 }

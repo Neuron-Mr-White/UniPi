@@ -90,6 +90,18 @@ export function extractTail(
     .filter((entry) => entry.text.length > 0);
 }
 
+/** The run ended because the user aborted it (Esc): last assistant stopReason. */
+export function endedAborted(messages: readonly unknown[]): boolean {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const message = messages[i];
+    if (typeof message !== "object" || message === null) continue;
+    const record = message as Record<string, unknown>;
+    if (record.role !== "assistant") continue;
+    return record.stopReason === "aborted";
+  }
+  return false;
+}
+
 /** Best-effort cumulative token count from assistant usage fields. Accepts
  *  both shapes pi providers emit: {input, output, cacheRead, cacheWrite,
  *  totalTokens} and {inputTokens, outputTokens}. */
@@ -287,6 +299,7 @@ export function wireRuntime(pi: ExtensionAPI, deps: RuntimeDeps): RuntimeHandle 
       changedFiles,
       commands,
       recentTail: extractTail(messages),
+      ...(endedAborted(messages) ? { aborted: true } : {}),
     };
     // Reset for the next turn before awaiting settlement.
     toolCalls = 0;

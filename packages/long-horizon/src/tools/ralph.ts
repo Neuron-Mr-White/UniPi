@@ -81,7 +81,7 @@ export function registerRalphTools(pi: ExtensionAPI, loop: RalphLoop): void {
             items_per_iteration: state.itemsPerIteration,
             reflect_every: state.reflectEvery,
             status: state.status,
-            task_file: `.unipi/ralph/${state.taskFile}`,
+            task_file: loop.taskFilePath(state.name),
             progress: summary,
           },
           null,

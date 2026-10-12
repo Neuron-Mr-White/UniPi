@@ -64,7 +64,9 @@ export function stopActiveOwner(
 ): string | undefined {
   const active = owner.getActive();
   if (!active || (kind !== undefined && active.kind !== kind)) return undefined;
-  if (active.kind === "goal") {
+  // A ralph loop rides the goal machine too: ending it must not leave its
+  // checklist goal active (a later /unipi:goal would resume the old one).
+  if (active.kind === "goal" || active.kind === "ralph-loop") {
     machine?.clear();
     toolset?.discardProposal();
   }
@@ -183,13 +185,13 @@ export function registerLongHorizonCommands(
       const rest = parts.slice(1).join(" ");
       const nameMatch = rest.match(/^(?:"([^"]+)"|(\S+))\s*([\s\S]*)$/);
       if (!nameMatch) {
-        notify(ctx, 'Usage: /unipi:ralph start <name> — then paste the task content, or point at an existing .unipi/ralph/<name>.md file.');
+        notify(ctx, `Usage: /unipi:ralph start <name> <task content> — the checklist is written to ${ralph.taskDirPath()}/<name>.md.`);
         return;
       }
       const name = (nameMatch[1] ?? nameMatch[2]).trim();
       const content = (nameMatch[3] ?? "").trim();
       if (!content) {
-        notify(ctx, `Provide the task content (markdown with \`- [ ]\` items) after the name, or create .unipi/ralph/${name}.md first.`);
+        notify(ctx, `Provide the task content (markdown with \`- [ ]\` items) after the name — it is written to ${ralph.taskFilePath(name)}.`);
         return;
       }
       const started = ralph.start(name, content);

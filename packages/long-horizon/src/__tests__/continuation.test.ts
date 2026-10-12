@@ -1,5 +1,5 @@
 import { strict as assert } from "node:assert";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -8,6 +8,7 @@ import { GoalToolset } from "../tools/goal.js";
 import { OwnerCoordinator } from "../owner.js";
 import {
   GoalContinuation,
+  MAX_RECOVERY_REDELIVERIES,
   selectHint,
   waitBackoffMs,
   WAIT_BACKOFF_MAX_MS,
@@ -46,9 +47,9 @@ interface Rig {
 
 function rig(
   verdicts: Array<{ verdict: string; reason: string; missing?: string[] }> = [],
-  options: { boardLine?: () => string | null } = {},
+  options: { boardLine?: () => string | null; todos?: () => string[]; machinePath?: string; ownerPath?: string; dir?: string } = {},
 ): Rig {
-  const dir = mkdtempSync(join(tmpdir(), "lh-cont-"));
+  const dir = options.dir ?? mkdtempSync(join(tmpdir(), "lh-cont-"));
   const machine = new GoalMachine({ statePath: () => join(dir, "goal.json") });
   const owner = new OwnerCoordinator({ statePath: () => join(dir, "owner.json") });
   const toolset = new GoalToolset({ machine, owner });
@@ -72,6 +73,7 @@ function rig(
     notify: (text, level) => notifications.push({ text, level: level ?? "warning" }),
     schedule: (fire, delayMs) => timers.push({ delayMs, fire }),
     ...(options.boardLine ? { boardLine: options.boardLine } : {}),
+    ...(options.todos ? { taskGate: { listActionableTasks: options.todos } } : {}),
   });
   return { machine, owner, toolset, sent, notifications, timers, continuation, dir, verifierResults };
 }
@@ -432,5 +434,179 @@ test("kickoff never carries the board line", async () => {
   assert.deepEqual(kickoff, { action: "none", reason: "kickoff-delivered" });
   assert.equal(r.sent.length, 1);
   assert.ok(!r.sent[0]!.includes("Kanboard:"), "kickoff contract stays cache-stable");
+  rmSync(r.dir, { recursive: true, force: true });
+});
+
+// ── UNI-283: durable pending continuation + restart re-delivery ─────────
+
+function setProposal(r: Rig, summary = "done"): void {
+  const goal = r.machine.getActive()!;
+  (r.toolset as unknown as { pending: unknown }).pending = {
+    kind: "completion",
+    goalId: goal.goalId,
+    revision: goal.revision,
+    summary,
+    proposedAt: new Date().toISOString(),
+  };
+}
+
+test("every continuation is persisted to goal.json BEFORE it is sent", async () => {
+  const r = rig();
+  const seenAtSend: Array<string | undefined> = [];
+  // Wrap send: the outbox must already hold the message when send runs.
+  const deps = (r.continuation as unknown as { deps: { send: (m: string, k?: string) => void } }).deps;
+  const original = deps.send;
+  deps.send = (message, kind) => {
+    seenAtSend.push(r.machine.get()?.pendingContinuation?.text === message ? "persisted" : "missing");
+    original(message, kind);
+  };
+  await startGoal(r);
+  await r.continuation.onTurnEnd(activity());
+  assert.deepEqual(seenAtSend, ["persisted", "persisted"], "kickoff + hint both hit the outbox first");
+  const onDisk = JSON.parse(readFileSync(join(r.dir, "goal.json"), "utf-8"));
+  assert.equal(onDisk.goal.pendingContinuation.text, r.sent[1]);
+  rmSync(r.dir, { recursive: true, force: true });
+});
+
+test("an aborted (Esc) turn leaves no pending continuation behind", async () => {
+  const r = rig();
+  await startGoal(r);
+  await r.continuation.onTurnEnd(activity({ aborted: true }));
+  assert.equal(r.sent.length, 2, "the in-session continuation still rides the stash");
+  assert.equal(r.machine.get()?.pendingContinuation, undefined, "but a restart must not re-drive it");
+  rmSync(r.dir, { recursive: true, force: true });
+});
+
+test("restart: a pending continuation is re-delivered with the recovery fragment, bounded, then the goal pauses", async () => {
+  const r = rig();
+  await startGoal(r);
+  await r.continuation.onTurnEnd(activity());
+  const hint = r.sent[1]!;
+  assert.equal(r.machine.get()?.pendingContinuation?.text, hint);
+
+  // Crash before delivery; each "restart" rebuilds from disk.
+  const restart = () => rig([], { dir: r.dir });
+  for (let attempt = 1; attempt <= MAX_RECOVERY_REDELIVERIES; attempt++) {
+    const revived = restart();
+    revived.owner.restore();
+    revived.machine.restore();
+    const recovery = revived.continuation.recoverOnRestart();
+    assert.equal(recovery.action, "redeliver");
+    if (recovery.action === "redeliver") {
+      assert.equal(recovery.attempt, attempt);
+      assert.match(recovery.text, /^Goal recovery/);
+      assert.ok(recovery.text.includes(hint), "the original prompt rides the re-delivery");
+      assert.equal(recovery.text.split("Goal recovery").length, 2, "the fragment is never stacked");
+    }
+    assert.equal(revived.machine.get()?.pendingContinuation?.attempts, attempt);
+  }
+  // Budget spent: the next restart pauses the goal and parks the owner.
+  const last = restart();
+  last.owner.restore();
+  last.machine.restore();
+  const exhausted = last.continuation.recoverOnRestart();
+  assert.deepEqual(exhausted, { action: "exhausted", attempts: MAX_RECOVERY_REDELIVERIES });
+  assert.equal(last.machine.get()?.status, "paused");
+  assert.equal(last.machine.get()?.reason, "paused(recovery_exhausted)");
+  assert.equal(last.owner.getActive(), undefined);
+  assert.equal(last.owner.getParked()?.kind, "goal");
+  assert.match(last.notifications[0]?.text ?? "", /could not be re-delivered/);
+  rmSync(r.dir, { recursive: true, force: true });
+});
+
+test("restart without a pending continuation arms the recovery fragment (existing path)", async () => {
+  const r = rig();
+  await startGoal(r);
+  r.machine.clearPendingContinuation(); // delivered before the crash
+  const revived = rig([], { dir: r.dir });
+  revived.owner.restore();
+  revived.machine.restore();
+  assert.deepEqual(revived.continuation.recoverOnRestart(), { action: "armed" });
+  const next = await revived.continuation.onTurnEnd(activity());
+  assert.equal((next as { via?: string }).via, "recovery");
+  rmSync(r.dir, { recursive: true, force: true });
+});
+
+test("restart: a paused goal or a non-driving owner never re-delivers", async () => {
+  const r = rig();
+  await startGoal(r);
+  await r.continuation.onTurnEnd(activity());
+  // Owner parked elsewhere (e.g. superseded) but goal still active on disk.
+  r.owner.suspend("paused(superseded_by:swarm)");
+  const revived = rig([], { dir: r.dir });
+  revived.owner.restore();
+  revived.machine.restore();
+  assert.deepEqual(revived.continuation.recoverOnRestart(), { action: "armed" });
+  assert.equal(revived.machine.get()?.pendingContinuation, undefined, "stale outbox dropped");
+  // Paused goal: nothing at all.
+  revived.machine.pause("paused(user_requested)");
+  assert.deepEqual(revived.continuation.recoverOnRestart(), { action: "none" });
+  rmSync(r.dir, { recursive: true, force: true });
+});
+
+test("restart wakes a waiting goal whose timer died with the process", async () => {
+  const r = rig();
+  await startGoal(r);
+  await r.continuation.onTurnEnd(activity({ waiting: true }));
+  assert.equal(r.machine.get()?.status, "waiting");
+  assert.ok(r.machine.get()?.pendingContinuation, "waiting goals keep an outbox entry (Maka)");
+  const revived = rig([], { dir: r.dir });
+  revived.owner.restore();
+  revived.machine.restore();
+  const recovery = revived.continuation.recoverOnRestart();
+  assert.equal(recovery.action, "redeliver");
+  assert.equal(revived.machine.get()?.status, "active");
+  assert.equal(revived.machine.get()?.pendingContinuation?.attempts, 1);
+  rmSync(r.dir, { recursive: true, force: true });
+});
+
+// ── UNI-283: task gate (Maka goal-task-gate-policy) ─────────────────────
+
+test("task gate: open todos turn a completion claim into a bounded [Task reminder], then completion proceeds", async () => {
+  let todos = ["[in_progress] write the docs", "ship the release"];
+  const r = rig([{ verdict: "met", reason: "verified" }], { todos: () => todos });
+  await startGoal(r);
+
+  // Reminder 1: no verifier run, the claim is not evaluated, goal stays active.
+  setProposal(r);
+  let decision = await r.continuation.onTurnEnd(activity());
+  assert.deepEqual(decision, { action: "continue", via: "task-reminder" });
+  assert.equal(r.machine.get()?.status, "active");
+  assert.equal(r.machine.get()?.notMetStreak, 0, "a gated claim is not a rejected claim");
+  const reminder = r.sent.at(-1) ?? "";
+  assert.match(reminder, /\[Task reminder\] Actionable session tasks remain/);
+  assert.match(reminder, /- \[in_progress\] write the docs\n- ship the release/);
+  assert.ok(reminder.indexOf("[Task reminder]") < reminder.indexOf("\nGoal:"), "reminder rides before the status line (Maka attachTaskReminder)");
+
+  // Reminder 2 (budget = 2 per goal).
+  setProposal(r);
+  decision = await r.continuation.onTurnEnd(activity());
+  assert.equal((decision as { via?: string }).via, "task-reminder");
+
+  // Budget spent: the claim goes to the verifier like normal.
+  setProposal(r);
+  decision = await r.continuation.onTurnEnd(activity());
+  assert.deepEqual(decision, { action: "stopped", terminal: "complete(verifier_met)", wrapUp: false });
+  assert.equal(r.machine.get()?.status, "complete");
+  todos = [];
+  rmSync(r.dir, { recursive: true, force: true });
+});
+
+test("task gate: no actionable todos → straight to the verifier", async () => {
+  const r = rig([{ verdict: "met", reason: "verified" }], { todos: () => [] });
+  await startGoal(r);
+  setProposal(r);
+  const decision = await r.continuation.onTurnEnd(activity());
+  assert.equal(decision.action, "stopped");
+  assert.equal(r.machine.get()?.status, "complete");
+  rmSync(r.dir, { recursive: true, force: true });
+});
+
+test("task gate: plain working turns are never gated (only completion claims)", async () => {
+  const r = rig([], { todos: () => ["pending thing"] });
+  await startGoal(r);
+  const decision = await r.continuation.onTurnEnd(activity());
+  assert.equal((decision as { via?: string }).via, "hint");
+  assert.ok(!(r.sent.at(-1) ?? "").includes("[Task reminder]"));
   rmSync(r.dir, { recursive: true, force: true });
 });

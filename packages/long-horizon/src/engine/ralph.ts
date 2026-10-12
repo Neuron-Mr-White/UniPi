@@ -3,7 +3,7 @@
  *
  * Design (docs/long-horizon-design.md §4): ralph = goal mode where the
  * objective is checklist-shaped. The task-file methodology survives intact
- * (.unipi/ralph/<name>.md, iteration cadence, reflection); what changes is
+ * (<ralphDir>/<name>.md, iteration cadence, reflection); what changes is
  * the engine underneath — GoalMachine brings the turn cap, token budget,
  * stall semantics, verification, and durable state for free.
  *
@@ -15,6 +15,11 @@
  *
  * Task-file format is the same markdown the old package used, so existing
  * loops migrate by pointing at their files.
+ *
+ * The task file lives under `deps.ralphDir()` (index.ts: the workspace state
+ * dir, ~/.unipi/workspace/<id>/state/long-horizon/ralph/) — every
+ * model-facing path is rendered from taskFilePath(), never a hard-coded
+ * `.unipi/ralph/` (UNI-283).
  */
 
 import { writeFileSync } from "node:fs";
@@ -29,6 +34,7 @@ import {
   type VerifierDeps,
 } from "./verifier.js";
 
+/** Legacy in-repo location (v2). Model-facing text uses RalphLoop.taskFilePath(). */
 export const RALPH_DIR = ".unipi/ralph";
 export const RALPH_COMPLETE_MARKER = "<promise>COMPLETE</promise>";
 
@@ -151,6 +157,17 @@ export class RalphLoop {
     return `${this.dir()}/${sanitize(name)}.md`;
   }
 
+  /** Absolute task-file path for a loop name — the single source of truth
+   *  for every model-facing mention of the file (prompts, tools, objective). */
+  taskFilePath(name: string): string {
+    return this.taskPath(name);
+  }
+
+  /** Absolute directory holding the task files (model/user-facing text). */
+  taskDirPath(): string {
+    return this.dir();
+  }
+
   get(): LoopFileState | null {
     return this.state;
   }
@@ -165,6 +182,48 @@ export class RalphLoop {
       // corrupt = absent
     }
     return this.state;
+  }
+
+  /**
+   * session_start recovery (UNI-283): reload the loop the owner coordinator
+   * names (an active or parked `ralph-loop` owner — its label is the loop
+   * name) and reconcile the three durable states. Call AFTER owner.restore()
+   * and machine.restore().
+   *
+   *   no ralph owner            → no loop (state cleared)
+   *   loop file missing/corrupt,
+   *   loop already complete, or
+   *   goal missing/terminal/not
+   *   the loop's goal           → orphaned owner: finished (active) or
+   *                               cleared (parked) so it can't wedge the slot
+   *   otherwise                 → restored; ralph_done works again
+   */
+  restoreFromOwner():
+    | { kind: "none" }
+    | { kind: "restored"; state: LoopFileState }
+    | { kind: "orphaned"; reason: string } {
+    this.state = null;
+    const owner = this.deps.owner;
+    const active = owner.getActive();
+    const parked = owner.getParked();
+    const ralphOwner = active?.kind === "ralph-loop" ? active : parked?.kind === "ralph-loop" ? parked : undefined;
+    if (!ralphOwner) return { kind: "none" };
+    const restored = this.restore(ralphOwner.label);
+    const goal = this.deps.machine.get();
+    let reason: string | undefined;
+    if (!restored) reason = "loop state missing";
+    else if (restored.status === "complete") reason = "loop already complete";
+    else if (!goal || goal.goalId !== restored.goalId) reason = "loop goal missing";
+    else if (goal.status === "complete" || goal.status === "blocked" || goal.status === "budget_limited" || goal.status === "usage_limited") {
+      reason = `loop goal ${goal.status}`;
+    }
+    if (reason === undefined && restored) return { kind: "restored", state: restored };
+    this.state = null;
+    const why = reason ?? "inconsistent";
+    const terminal = `stopped(ralph_${why.replace(/\s+/g, "_")})`;
+    if (ralphOwner === active) owner.finish(terminal);
+    else owner.clearParked();
+    return { kind: "orphaned", reason: why };
   }
 
   /**
@@ -188,7 +247,7 @@ export class RalphLoop {
     }
 
     const taskFile = `${sanitize(name)}.md`;
-    const goal = this.deps.machine.create(`Complete every checklist item in ${RALPH_DIR}/${taskFile}`, {
+    const goal = this.deps.machine.create(`Complete every checklist item in ${this.taskPath(name)}`, {
       ...(options.maxIterations !== undefined ? { maxTurns: options.maxIterations } : {}),
       ...(options.tokenBudget !== undefined && options.tokenBudget !== null
         ? { tokenBudget: options.tokenBudget }
@@ -222,6 +281,7 @@ export class RalphLoop {
     const itemsTotal = parseChecklist(taskContent).length;
     this.deps.onEvent?.({ type: "loop_start", name: state.name, iteration: 1, total: itemsTotal });
     const firstPrompt = this.buildIterationPrompt(state, false);
+    this.persistPending(state.goalId, firstPrompt);
     this.deps.send(firstPrompt, "kickoff");
     return { ok: true, state, firstPrompt };
   }
@@ -261,6 +321,7 @@ export class RalphLoop {
     this.deps.onEvent?.({ type: "iteration_done", name: state.name, iteration: next.iteration, remaining });
     const isReflection = next.reflectEvery > 0 && next.iteration % next.reflectEvery === 0;
     const prompt = this.buildIterationPrompt(next, isReflection);
+    this.persistPending(next.goalId, prompt);
     this.deps.send(prompt);
     return { ok: true, prompt };
   }
@@ -282,7 +343,7 @@ export class RalphLoop {
       objective: goal.objective,
       objectiveDigest: goal.objectiveDigest,
       claim: "Every checklist item in the task file is checked.",
-      changedFiles: [`.unipi/ralph/${state.taskFile}`],
+      changedFiles: [this.taskPath(state.name)],
       commands: [],
       recentTail: [],
     });
@@ -322,6 +383,15 @@ export class RalphLoop {
     return { kind: "inconclusive", reason: verdict.reason };
   }
 
+  /** Durable outbox (UNI-283): the iteration prompt survives a crash before delivery. */
+  private persistPending(goalId: string, prompt: string): void {
+    try {
+      this.deps.machine.recordPendingContinuation(goalId, prompt);
+    } catch {
+      // A failed outbox write never blocks the iteration.
+    }
+  }
+
   buildIterationPrompt(state: LoopFileState, isReflection: boolean): string {
     const markdown = tryRead(this.taskPath(state.name)) ?? "";
     const items = parseChecklist(markdown);
@@ -342,7 +412,7 @@ export class RalphLoop {
     } else {
       parts.push("(no unchecked items — verify the file, then claim completion)");
     }
-    parts.push(`\nTask file: ${RALPH_DIR}/${state.taskFile} (${items.length - countUnchecked(items)}/${items.length} done)`);
+    parts.push(`\nTask file: ${this.taskPath(state.name)} (${items.length - countUnchecked(items)}/${items.length} done)`);
     parts.push("\n## Instructions\n");
     parts.push("1. Work the items above; update the task file as you go (`- [x]`)");
     if (state.itemsPerIteration > 0) {
