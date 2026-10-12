@@ -15,8 +15,7 @@ import type { LhProgressEvent, LhProgressItem, LhProgressLogLine, LhProgressRun 
 import type { ChecklistItem, LoopFileState } from "./engine/ralph.js";
 import type { GoalState } from "./engine/goal-state.js";
 import type { OwnerKind } from "./modes.js";
-import type { GraphItemStatus } from "./tools/graph.js";
-import type { SwarmItemStatus } from "./tools/swarm.js";
+import type { GraphEngine, GraphState, WorkViewStatus } from "./graph/engine.js";
 
 type RunMode = LhProgressRun["mode"];
 
@@ -32,30 +31,6 @@ export interface ProgressFinished {
   readonly label: string;
   readonly terminalReason: string;
   readonly endedAt: string;
-}
-
-export interface ProgressGraphInput {
-  readonly task: string;
-  readonly items: ReadonlyArray<{
-    readonly itemId: string;
-    readonly instruction: string;
-    readonly dependsOn: readonly string[];
-    readonly wave: number;
-    readonly status: GraphItemStatus;
-    readonly attempts: number;
-    readonly summary?: string;
-  }>;
-}
-
-export interface ProgressSwarmInput {
-  readonly task: string;
-  readonly items: ReadonlyArray<{
-    readonly itemId: string;
-    readonly instruction: string;
-    readonly status: SwarmItemStatus;
-    readonly attempts: number;
-    readonly summary?: string;
-  }>;
 }
 
 export interface ProgressRalphInput {
@@ -75,8 +50,10 @@ export interface LhProgressInput {
   readonly owner?: ProgressOwner;
   /** Newest finished owner (owner history[0]). */
   readonly finished?: ProgressFinished;
-  readonly graph?: ProgressGraphInput | null;
-  readonly swarm?: ProgressSwarmInput | null;
+  /** The durable agent graph (graph + swarm modes), current or last. */
+  readonly graph?: GraphState | null;
+  /** Derives `blocked` (queued work on a dead input). */
+  readonly graphEngine?: Pick<GraphEngine, "viewStatus">;
   readonly ralph?: ProgressRalphInput | null;
   readonly goal?: Pick<GoalState, "goalId" | "objective" | "status" | "turn" | "maxTurns"> | null;
   readonly goalEstimate?: ProgressGoalEstimate;
@@ -97,24 +74,17 @@ export function modeOfKind(kind: OwnerKind): RunMode {
   return kind === "ralph-loop" ? "ralph" : kind;
 }
 
-const GRAPH_STATUS: Record<GraphItemStatus, LhProgressItem["status"]> = {
+const WORK_STATUS: Record<WorkViewStatus, LhProgressItem["status"]> = {
   queued: "queued",
-  ready: "ready",
-  dispatched: "running",
+  running: "running",
   completed: "done",
   failed: "failed",
-  aborted: "aborted",
+  blocked: "aborted",
+  stopped: "aborted",
+  cancelled: "aborted",
+  superseded: "aborted",
 };
 
-const SWARM_STATUS: Record<SwarmItemStatus, LhProgressItem["status"]> = {
-  queued: "queued",
-  dispatched: "running",
-  completed: "done",
-  failed: "failed",
-  aborted: "aborted",
-};
-
-/** Run status of a finished owner from its terminal reason. */
 export function finishedStatus(reason: string): LhProgressRun["status"] {
   if (reason.includes("with_failures") || reason.startsWith("failed")) return "failed";
   if (reason.startsWith("complete") || reason.startsWith("settled")) return "done";
@@ -133,30 +103,24 @@ function countsOf(items: readonly LhProgressItem[]): LhProgressRun["counts"] {
 }
 
 function itemsFor(mode: RunMode, title: string, input: LhProgressInput, live: boolean): LhProgressItem[] | undefined {
-  if (mode === "graph") {
+  if (mode === "graph" || mode === "swarm") {
     const g = input.graph;
-    if (!g || g.task !== title) return undefined;
-    return g.items.slice(0, ITEMS_MAX).map((item) => ({
-      id: item.itemId,
-      label: clip(item.instruction, LABEL_MAX),
-      status: GRAPH_STATUS[item.status],
-      deps: [...item.dependsOn],
-      wave: item.wave,
-      ...(item.summary ? { summary: clip(item.summary, SUMMARY_MAX) } : {}),
-      attempts: item.attempts,
-    }));
-  }
-  if (mode === "swarm") {
-    const s = input.swarm;
-    if (!s || s.task !== title) return undefined;
-    return s.items.slice(0, ITEMS_MAX).map((item) => ({
-      id: item.itemId,
-      label: clip(item.instruction, LABEL_MAX),
-      status: SWARM_STATUS[item.status],
-      deps: [],
-      ...(item.summary ? { summary: clip(item.summary, SUMMARY_MAX) } : {}),
-      attempts: item.attempts,
-    }));
+    if (!g || g.mode !== mode || g.task !== title) return undefined;
+    const ids = new Set(g.work.map((work) => work.workId));
+    return g.work.slice(0, ITEMS_MAX).map((work) => {
+      const view = input.graphEngine?.viewStatus(g, work) ?? work.status;
+      const summary = work.status === "completed" ? work.result : work.failure ?? work.stopReason;
+      return {
+        id: work.workId,
+        label: clip(work.instruction, LABEL_MAX),
+        status: WORK_STATUS[view],
+        // In-graph inputs only (result ids r-<id> name their work).
+        deps: mode === "graph" ? work.inputIds.map((id) => (ids.has(id) ? id : id.replace(/^r-/, ""))).filter((id) => ids.has(id)) : [],
+        ...(mode === "graph" ? { wave: work.wave } : {}),
+        ...(summary ? { summary: clip(summary, SUMMARY_MAX) } : {}),
+        ...(work.attempts > 0 ? { attempts: work.attempts } : {}),
+      };
+    });
   }
   if (mode === "ralph") {
     const r = input.ralph;

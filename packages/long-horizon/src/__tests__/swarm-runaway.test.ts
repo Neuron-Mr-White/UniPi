@@ -11,7 +11,6 @@ import {
   ANTI_POISONING_SUFFIX,
   type RunawayStep,
 } from "../engine/runaway.js";
-import { SwarmLedger, SWARM_ORCHESTRATION_PROMPT, registerSwarmTools } from "../tools/swarm.js";
 import { OwnerCoordinator } from "../owner.js";
 
 // ── runaway detectors ────────────────────────────────────────────────────
@@ -119,97 +118,4 @@ test("nudge text names the signal and stays bounded", () => {
     assert.ok(text.length > 50 && text.length < 900);
     assert.ok(text.includes("No-progress guard"));
   }
-});
-
-// ── swarm ledger ─────────────────────────────────────────────────────────
-
-function owner(): { coordinator: OwnerCoordinator; dir: string } {
-  const dir = mkdtempSync(join(tmpdir(), "lh-swarm-"));
-  return { coordinator: new OwnerCoordinator({ statePath: () => join(dir, "owner.json") }), dir };
-}
-
-const items = [
-  { itemId: "a", instruction: "review core" },
-  { itemId: "b", instruction: "review storage" },
-  { itemId: "c", instruction: "review docs" },
-];
-
-test("swarm start activates the owner and requires ≥2 items", () => {
-  const { coordinator, dir } = owner();
-  const ledger = new SwarmLedger(coordinator);
-  const tooSmall = ledger.start("one item", [{ itemId: "a", instruction: "x" }]);
-  assert.equal(tooSmall.ok, false);
-  const started = ledger.start("review", items);
-  assert.equal(started.ok, true);
-  assert.equal(coordinator.getActive()?.kind, "swarm");
-  rmSync(dir, { recursive: true, force: true });
-});
-
-test("dispatch claims are idempotent; re-dispatch only after failure", () => {
-  const { coordinator, dir } = owner();
-  const ledger = new SwarmLedger(coordinator);
-  ledger.start("review", items);
-  assert.equal(ledger.markDispatched("a").ok, true);
-  assert.equal(ledger.markDispatched("a").ok, false); // double dispatch refused
-  ledger.report("a", "failed", "provider 500");
-  assert.equal(ledger.markDispatched("a").ok, true); // replacement allowed
-  rmSync(dir, { recursive: true, force: true });
-});
-
-test("status projection: running → needs_attention → settled; report settles and finishes", () => {
-  const { coordinator, dir } = owner();
-  const ledger = new SwarmLedger(coordinator);
-  ledger.start("review", items);
-  ledger.markDispatched("a");
-  ledger.markDispatched("b");
-  let snap = ledger.snapshot();
-  assert.equal(snap.status, "running");
-  ledger.report("b", "failed", "crashed");
-  snap = ledger.snapshot();
-  assert.equal(snap.status, "needs_attention");
-  ledger.markDispatched("b");
-  ledger.report("a", "completed", "clean");
-  ledger.report("c", "completed", "clean");
-  const b = ledger.report("b", "completed", "fixed");
-  assert.equal(b.ok, true);
-  assert.equal(b.settled, true);
-  assert.equal(ledger.snapshot().status, "settled");
-  // Terminal re-report refused.
-  const dup = ledger.report("a", "failed");
-  assert.equal(dup.ok, false);
-  rmSync(dir, { recursive: true, force: true });
-});
-
-test("orchestration prompt carries the Maka discipline", () => {
-  assert.match(SWARM_ORCHESTRATION_PROMPT, /at least two meaningful independent items/);
-  assert.match(SWARM_ORCHESTRATION_PROMPT, /Do not manufacture parallelism/);
-  assert.match(SWARM_ORCHESTRATION_PROMPT, /swarm_yield/);
-  assert.match(SWARM_ORCHESTRATION_PROMPT, /wake you/);
-});
-
-test("swarm tools register and close the owner on settle", async () => {
-  const { coordinator, dir } = owner();
-  const ledger = new SwarmLedger(coordinator);
-  const registered: Array<{ name: string; execute: (p: unknown) => Promise<{ content: Array<{ type: string; text: string }> }> }> = [];
-  const pi = {
-    registerTool: (tool: { name: string; execute: (id: string, p: unknown) => Promise<{ content: Array<{ type: string; text: string }> }> }) =>
-      registered.push({ name: tool.name, execute: (p) => tool.execute("id", p) }),
-  } as never;
-  registerSwarmTools(pi, { ledger, owner: coordinator });
-  assert.deepEqual(registered.map((t) => t.name).sort(), ["swarm_report", "swarm_status", "swarm_yield"]);
-
-  ledger.start("review", items.slice(0, 2));
-  const done = await registered.find((t) => t.name === "swarm_report")!.execute({
-    item_id: "a",
-    status: "completed",
-    summary: "ok",
-  });
-  assert.match(done.content[0]?.text ?? "", /Recorded a → completed/);
-  const close = await registered.find((t) => t.name === "swarm_report")!.execute({
-    item_id: "b",
-    status: "completed",
-  });
-  assert.match(close.content[0]?.text ?? "", /All items settled/);
-  assert.equal(coordinator.getActive(), undefined); // owner finished
-  rmSync(dir, { recursive: true, force: true });
 });

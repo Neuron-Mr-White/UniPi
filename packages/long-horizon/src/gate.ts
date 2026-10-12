@@ -24,8 +24,7 @@ import { resolveMode, type ResolutionSource } from "./judge/resolve.js";
 import type { FetchLike } from "./judge/typesafe.js";
 import type { JudgeKeyRegistry } from "./judge/credentials.js";
 import { loadSettings, type LongHorizonSettings } from "./settings.js";
-import { SWARM_ORCHESTRATION_PROMPT } from "./tools/swarm.js";
-import { GRAPH_ORCHESTRATION_PROMPT } from "./tools/graph.js";
+import { GRAPH_ORCHESTRATION_PROMPT, SWARM_ORCHESTRATION_PROMPT } from "./tools/graph.js";
 
 export interface GateState {
   readonly mode: LhMode;

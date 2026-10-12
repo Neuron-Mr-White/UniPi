@@ -29,7 +29,7 @@ import {
   SubagentManager, backgroundRunningReason, canSpawn, getSharedSubagents, subscribeSubagents, recordStatusFor,
   MAX_CONCURRENT, type SubagentRecord, type SubagentRun, type SubagentStatus,
 } from "./manager.js";
-import { setSharedSubagentManager, clearSharedSubagentManager } from "./manager-shared.js";
+import { setSharedSubagentManager, clearSharedSubagentManager, setGraphRunPort, type GraphRunPort } from "./manager-shared.js";
 import { loadProfiles, type AgentProfile } from "./profiles.js";
 import { buildTranscript, itemsFromEvents } from "./transcript.js";
 import {
@@ -640,8 +640,54 @@ export default function subagents(pi: ExtensionAPI, deps?: { manager?: SubagentM
   });
   registerAgentsCommand(pi, { onChange: (cwd) => refresh(cwd) });
 
+  // UNI-280: the Agent Graph (long-horizon) runs its work through this port.
+  // Background-only; the graph owns completion (no completion notice here).
+  const graphPort: GraphRunPort = {
+    profiles: () => (enabled && canSpawn() ? profiles.map((p) => p.id) : []),
+    start: (request) => {
+      const ctx = uiCtx;
+      if (ctx === undefined) return { error: "subagents are not ready (no session)", retryable: true };
+      if (!enabled || !canSpawn()) return { error: "subagents are disabled in this session" };
+      const resumeProfile = request.resume !== undefined ? manager.record(request.resume)?.profile : undefined;
+      const profile = profiles.find((p) => p.id === (resumeProfile ?? request.profile));
+      if (!profile) return { error: `unknown subagent profile "${request.profile}" (available: ${profiles.map((p) => p.id).join(", ")})` };
+      const cwd = ctx.cwd ?? process.cwd();
+      const start = manager.start({
+        title: request.title,
+        task: request.task,
+        profile,
+        model: resolveSubagentModel(profile, ctx, config),
+        thinking: resolveSubagentThinking(profile, ctx, config),
+        cwd,
+        leadSessionId: leadSessionId(ctx),
+        background: true,
+        resume: request.resume,
+        maxConcurrent: config.maxConcurrent,
+        onStep: (record, step) => appendSubagentStep((type, data) => pi.appendEntry(type, data), record, step),
+      });
+      if ("error" in start) return { error: start.error, retryable: /Maximum \d+ concurrent|still running/.test(start.error) };
+      const { run } = start;
+      const id = run.record.id;
+      void run.done.then(
+        (report) => {
+          const rec = manager.record(id);
+          const status = rec?.status === "cancelled" || report.status === "aborted" ? "cancelled" : recordStatusFor(report, rec?.cancelledBy) === "completed" ? "completed" : "failed";
+          request.onDone({ status, text: report.text, error: report.error, toolCalls: report.toolCalls, usage: { input: report.usage.input, output: report.usage.output, cost: report.usage.cost } });
+        },
+        (error: unknown) => {
+          const rec = manager.record(id);
+          request.onDone({ status: rec?.cancelledBy !== undefined ? "cancelled" : "failed", text: "", error: error instanceof Error ? error.message : String(error), toolCalls: rec?.toolCalls ?? 0 });
+        },
+      );
+      return { id };
+    },
+    cancel: (id) => manager.cancel(id, "user"),
+  };
+  setGraphRunPort(graphPort);
+
   pi.on("session_start", (_event, ctx) => {
     uiCtx = ctx;
+    setGraphRunPort(graphPort);
     fgInstalled = false;
     workingShown = false;
     manager.restore(ctx.cwd ?? process.cwd(), leadSessionId(ctx));

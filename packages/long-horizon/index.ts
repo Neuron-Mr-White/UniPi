@@ -10,7 +10,7 @@ import { existsSync, renameSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { Text } from "@earendil-works/pi-tui";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { appendProgress, bus, getPackageVersion, harnessMetadata, installArbiter, installPendingWorkMonitor, kanboardClaimsReminder, registerCommandRunner, registerCompactionContext, registerNudgeProvider, sendHarnessUserMessage, stateDir, UNIPI_EVENTS } from "@pi-unipi/core";
+import { appendProgress, bus, getPackageVersion, isChildProcess, harnessMetadata, installArbiter, installPendingWorkMonitor, kanboardClaimsReminder, registerCommandRunner, registerCompactionContext, registerNudgeProvider, sendHarnessUserMessage, stateDir, UNIPI_EVENTS } from "@pi-unipi/core";
 import { longHorizonCompactionBrief } from "./src/compaction-brief.js";
 import { OwnerCoordinator, type OwnerEvent } from "./src/owner.js";
 import { Gate } from "./src/gate.js";
@@ -23,8 +23,9 @@ import { GoalContinuation } from "./src/engine/continuation.js";
 import { NudgeStash, nextStashMetaState, ownerEventClearsStash, type StashMetaState } from "./src/engine/nudge-stash.js";
 import { RalphLoop } from "./src/engine/ralph.js";
 import { registerRalphTools } from "./src/tools/ralph.js";
-import { SwarmLedger, registerSwarmTools } from "./src/tools/swarm.js";
-import { GraphLedger, registerGraphTools } from "./src/tools/graph.js";
+import { registerGraphTools } from "./src/tools/graph.js";
+import { GraphEngine, type GraphMode } from "./src/graph/engine.js";
+import { graphRunnerFromPort, readGraphRunPort } from "./src/graph/runner.js";
 import { TodoStore, registerTodoTool } from "./src/tools/todo.js";
 import { wireRuntime } from "./src/runtime.js";
 import { ralphProgressData } from "./src/progress.js";
@@ -109,8 +110,8 @@ export default function longHorizon(pi: ExtensionAPI): void {
       const next = lhProgressSnapshot({
         ...(ownerView ? { owner: ownerView } : {}),
         ...(owner.snapshot().history[0] ? { finished: owner.snapshot().history[0] } : {}),
-        graph: graph.progressView(),
-        swarm: swarm.progressView(),
+        graph: graphEngine.current() ?? null,
+        graphEngine,
         ralph: ralphState ? { state: ralphState, checklist: ralph.checklist() } : null,
         goal: machine.get(),
         ...(goalEstimate ? { goalEstimate } : {}),
@@ -123,6 +124,8 @@ export default function longHorizon(pi: ExtensionAPI): void {
       // The progress view never breaks the owner lifecycle.
     }
   }
+  // Bound once the graph engine exists (owner events can fire before that).
+  let graphOwnerChanged: ((event: OwnerEvent) => void) | undefined;
   const owner = new OwnerCoordinator({
     statePath,
     onChange: (_snapshot, event: OwnerEvent) => {
@@ -135,6 +138,8 @@ export default function longHorizon(pi: ExtensionAPI): void {
         stash.take();
         stashMetaState = { meta: undefined, kickoff: false };
       }
+      // UNI-279: a graph/swarm owner's lifecycle drives its durable graph.
+      graphOwnerChanged?.(event);
       bus.emit(UNIPI_EVENTS.LONG_HORIZON_OWNER_CHANGED, {
         event: event.type,
         ...("owner" in event && event.owner
@@ -298,12 +303,66 @@ export default function longHorizon(pi: ExtensionAPI): void {
     },
   });
   registerRalphTools(pi, ralph);
-  const swarm = new SwarmLedger(owner);
-  registerSwarmTools(pi, { ledger: swarm, owner });
-  const graph = new GraphLedger(owner);
-  registerGraphTools(pi, { ledger: graph });
-  swarm.onChange = publishProgress;
-  graph.onChange = publishProgress;
+  // UNI-279/280/281: one durable Agent Graph for graph AND swarm mode
+  // (Maka). The host runs the work as subagents; the supervisor is woken
+  // once per durable checkpoint.
+  const graphEngine: GraphEngine = new GraphEngine({
+    openOwner: (mode: GraphMode, task: string) => {
+      const active = owner.getActive();
+      if (active) {
+        if (active.kind === mode) return undefined; // the owner the command opened
+        return `the session is owned by a ${active.kind} owner — finish or suspend it first`;
+      }
+      if (owner.getParked()?.kind === mode) owner.clearParked();
+      try {
+        return owner.activate(mode, task) ? undefined : "could not open the graph owner";
+      } catch (err) {
+        return err instanceof Error ? err.message : String(err);
+      }
+    },
+    closeOwner: (reason) => {
+      const active = owner.getActive();
+      if (active?.kind === "graph" || active?.kind === "swarm") owner.finish(reason);
+    },
+    canRun: () => {
+      const kind = owner.getActive()?.kind;
+      return kind === "graph" || kind === "swarm";
+    },
+    onChange: () => publishProgress(),
+    onCheckpoint: (checkpoint) => {
+      sendNow(checkpoint.text, {
+        source: graphEngine.open()?.mode === "swarm" ? "Swarm" : "Graph",
+        title: checkpoint.kind === "settled" ? "All work settled" : checkpoint.kind === "needs_attention" ? "Needs attention" : "Checkpoint",
+        synopsis: checkpoint.text.split("\n")[0],
+        ...(checkpoint.kind === "needs_attention" ? { severity: "warning" as const } : {}),
+      });
+    },
+  });
+  graphOwnerChanged = (event) => {
+    if (!("owner" in event) || !event.owner) return;
+    const kind = event.owner.kind;
+    if (kind !== "graph" && kind !== "swarm") return;
+    if (event.type === "finished" || event.type === "cleared") {
+      // finish() from the engine itself already closed the graph (no-op then).
+      graphEngine.abandon(event.type === "finished" ? `owner ${event.reason}` : "owner cleared");
+    } else if (event.type === "resumed" || event.type === "activated") {
+      queueMicrotask(() => graphEngine.reconcile());
+    }
+  };
+  const bindGraphRunner = (): void => {
+    const port = readGraphRunPort();
+    graphEngine.setRunner(port ? graphRunnerFromPort(port, (graphId, workId, outcome) => graphEngine.settle(graphId, workId, outcome)) : undefined);
+  };
+  bindGraphRunner();
+  registerGraphTools(pi, {
+    engine: graphEngine,
+    mode: () => {
+      const kind = owner.getActive()?.kind;
+      if (kind === "swarm" || kind === "graph") return kind;
+      return gate.current()?.mode === "swarm" ? "swarm" : "graph";
+    },
+    profiles: () => readGraphRunPort()?.profiles() ?? [],
+  });
   const runtime = wireRuntime(pi, {
     machine,
     toolset,
@@ -470,6 +529,19 @@ export default function longHorizon(pi: ExtensionAPI): void {
     gate.resetDisplay(loadSettings().defaultMode);
     owner.restore();
     machine.restore();
+    // UNI-279: the session's durable graph (interrupted work resumes once).
+    // Child agents never bind it (Maka: children never get the supervisor
+    // graph) — they share the project state dir and would "repair" and
+    // re-run the parent's live work.
+    if (!isChildProcess()) {
+      bindGraphRunner();
+      graphEngine.bind(lhStatePath("graph.json"));
+      const graphKind = owner.getActive()?.kind;
+      if (graphEngine.open() && graphKind !== "graph" && graphKind !== "swarm" && owner.getParked()?.kind !== "graph" && owner.getParked()?.kind !== "swarm") {
+        graphEngine.abandon("owner gone at restart");
+      }
+      graphEngine.reconcile();
+    }
     // Only a truly drivable goal arms the recovery fragment; a paused goal
     // must come back idle until the user (or the kanboard runner) resumes it.
     const goalStatus = machine.get()?.status;
@@ -491,6 +563,6 @@ export default function longHorizon(pi: ExtensionAPI): void {
       "unipi:regular",
       "unipi:visualize-progress",
     ],
-    tools: ["create_goal", "get_goal", "update_goal", "todowrite", "ralph_done", "loop_status", "swarm_report", "swarm_status", "swarm_yield", "update_agent_graph", "graph_output", "view_agent_graph"],
+    tools: ["create_goal", "get_goal", "update_goal", "todowrite", "ralph_done", "loop_status", "update_agent_graph", "view_agent_graph", "yield_agent_graph", "agent_output", "agent_swarm_status"],
   });
 }

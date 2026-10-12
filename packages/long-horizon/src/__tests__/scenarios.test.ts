@@ -15,8 +15,7 @@ import { GoalMachine } from "../engine/goal-state.js";
 import { GoalToolset } from "../tools/goal.js";
 import { GoalContinuation } from "../engine/continuation.js";
 import { RalphLoop } from "../engine/ralph.js";
-import { SwarmLedger } from "../tools/swarm.js";
-import { GraphLedger } from "../tools/graph.js";
+import { GraphEngine } from "../graph/engine.js";
 import { wireRuntime } from "../runtime.js";
 import { DEFAULT_SETTINGS, type LongHorizonSettings } from "../settings.js";
 import type { FetchLike } from "../judge/typesafe.js";
@@ -140,7 +139,7 @@ const goalPayload = {
   tools: [
     { type: "function", function: { name: "bash" } },
     { type: "function", function: { name: "create_goal" } },
-    { type: "function", function: { name: "swarm_status" } },
+    { type: "function", function: { name: "agent_swarm_status" } },
     { type: "function", function: { name: "run_subagent" } },
   ],
 };
@@ -160,7 +159,7 @@ test("scenario 1: judge ON routes a fan-out prompt to swarm and the payload surf
   const filtered = filterPayloadTools(goalPayload, "swarm");
   assert.deepEqual(
     (filtered.tools as Array<{ function?: { name?: string } }>).map((t) => t.function?.name),
-    ["bash", "swarm_status", "run_subagent"], // goal tools hidden, delegation full
+    ["bash", "agent_swarm_status", "run_subagent"], // goal tools hidden, delegation full
   );
   rmSync(w.dir, { recursive: true, force: true });
 });
@@ -266,18 +265,24 @@ test("scenario 5: ralph loop with all items checked verifies, finishes, and emit
   rmSync(dir, { recursive: true, force: true });
 });
 
-test("scenario 6: one automation owner — swarm active refuses graph declare and goal create", () => {
+test("scenario 6: one automation owner — an active goal refuses opening a graph", () => {
   const dir = mkdtempSync(join(tmpdir(), "lh-scenario-one-"));
   const owner = new OwnerCoordinator({ statePath: () => join(dir, "owner.json") });
-  const swarm = new SwarmLedger(owner);
-  swarm.start("review", [
-    { itemId: "a", instruction: "x" },
-    { itemId: "b", instruction: "y" },
-  ]);
-  const graph = new GraphLedger(owner);
-  const refused = graph.declare("audit", [{ itemId: "g1", instruction: "z" }]);
+  owner.activate("goal", "ship it");
+  const engine = new GraphEngine({
+    openOwner: (mode, task) => {
+      const active = owner.getActive();
+      if (active) return active.kind === mode ? undefined : `the session is owned by a ${active.kind} owner — finish or suspend it first`;
+      return owner.activate(mode, task) ? undefined : "could not open";
+    },
+    closeOwner: () => undefined,
+    canRun: () => false,
+  });
+  engine.bind(join(dir, "graph.json"));
+  const refused = engine.update({ mode: "graph", addWork: [{ workId: "g1", instruction: "z" }] });
   assert.equal(refused.ok, false);
-  if (!refused.ok) assert.match(refused.reason, /owned by a swarm owner/);
+  if (!refused.ok) assert.match(refused.reason, /owned by a goal owner/);
+  assert.equal(engine.current(), undefined);
   rmSync(dir, { recursive: true, force: true });
 });
 

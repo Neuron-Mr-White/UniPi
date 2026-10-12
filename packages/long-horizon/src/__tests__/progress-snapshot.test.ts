@@ -14,10 +14,44 @@ import { finishedStatus, lhProgressSnapshot, LOG_MAX, progressLogLines, sameProg
 import { frameWidthOk, progressViewHeight, renderProgressView } from "../progress-view.js";
 import { viewHeight } from "../visualize.js";
 import { OwnerCoordinator } from "../owner.js";
-import { GraphLedger } from "../tools/graph.js";
-import { SwarmLedger } from "../tools/swarm.js";
+import { GraphEngine, type GraphState, type WorkStatus } from "../graph/engine.js";
 
 const plain = { fg: (_c: string, s: string) => s, bold: (s: string) => s };
+
+/** Old ledger words → durable work statuses (fixtures stay readable). */
+const STATUS: Record<string, WorkStatus> = { queued: "queued", ready: "queued", dispatched: "running", running: "running", completed: "completed", failed: "failed", aborted: "stopped" };
+
+function graphState(
+  mode: "graph" | "swarm",
+  task: string,
+  items: ReadonlyArray<{ itemId: string; instruction: string; dependsOn?: string[]; wave?: number; status?: string; attempts?: number; summary?: string }>,
+): GraphState {
+  return {
+    v: 1,
+    graphId: `g-${task}`,
+    mode,
+    task,
+    createdAt: 0,
+    revision: 1,
+    updatedAt: 0,
+    work: items.map((i) => {
+      const status = STATUS[i.status ?? "queued"]!;
+      return {
+        workId: i.itemId,
+        instruction: i.instruction,
+        target: { kind: "new_preset" as const, subagentId: "subagent_general" },
+        inputIds: i.dependsOn ?? [],
+        selectedResultInputs: [],
+        wave: i.wave ?? 0,
+        revision: 1,
+        status,
+        attempts: i.attempts ?? 0,
+        ...(i.summary && status === "completed" ? { result: i.summary, resultId: `r-${i.itemId}` } : {}),
+        ...(i.summary && status === "failed" ? { failure: i.summary } : {}),
+      };
+    }),
+  };
+}
 
 function graphInput(statuses: Record<string, string> = {}): LhProgressInput {
   const items = [
@@ -27,7 +61,7 @@ function graphInput(statuses: Record<string, string> = {}): LhProgressInput {
   ];
   return {
     owner: { kind: "graph", label: "Health", status: "active" },
-    graph: { task: "Health", items: items.map((i) => ({ ...i, status: (statuses[i.itemId] ?? "queued") as never, attempts: 0 })) },
+    graph: graphState("graph", "Health", items.map((i) => ({ ...i, status: statuses[i.itemId] ?? "queued" }))),
     now: 1000,
   };
 }
@@ -62,7 +96,7 @@ test("swarm: statuses map, labels clipped to one line", () => {
   const long = "x ".repeat(200);
   const snap = lhProgressSnapshot({
     owner: { kind: "swarm", label: "Review", status: "active" },
-    swarm: { task: "Review", items: [{ itemId: "s1", instruction: long, status: "failed", attempts: 2, summary: "boom" }, { itemId: "s2", instruction: "ok\nnext", status: "completed", attempts: 1 }] },
+    graph: graphState("swarm", "Review", [{ itemId: "s1", instruction: long, status: "failed", attempts: 2, summary: "boom" }, { itemId: "s2", instruction: "ok\nnext", status: "completed", attempts: 1 }]),
     now: 1,
   });
   const [s1, s2] = snap.current!.items;
@@ -145,38 +179,43 @@ test("sameProgress ignores updatedAt/log", () => {
   assert.ok(!sameProgress(undefined, a));
 });
 
-test("ledgers fire onChange on every mutation (wired to the LH_PROGRESS publish)", () => {
+test("the durable graph fires onChange on every change (wired to the LH_PROGRESS publish)", () => {
   const dir = mkdtempSync(join(tmpdir(), "lh-progress-"));
   const owner = new OwnerCoordinator({ statePath: () => join(dir, "state.json") });
-  const graph = new GraphLedger(owner);
-  const swarm = new SwarmLedger(new OwnerCoordinator({ statePath: () => join(dir, "s.json") }));
+  let engine!: GraphEngine;
   const publish = () => {
     const active = owner.getActive();
     const prev = bus.get(UNIPI_EVENTS.LH_PROGRESS);
-    const next = lhProgressSnapshot({ ...(active ? { owner: active } : {}), ...(owner.snapshot().history[0] ? { finished: owner.snapshot().history[0] } : {}), graph: graph.progressView(), now: Date.now() });
+    const next = lhProgressSnapshot({ ...(active ? { owner: active } : {}), ...(owner.snapshot().history[0] ? { finished: owner.snapshot().history[0] } : {}), graph: engine.current() ?? null, graphEngine: engine, now: Date.now() });
     if (!sameProgress(prev, next)) bus.emit(UNIPI_EVENTS.LH_PROGRESS, withProgressLog(prev, next));
   };
-  let swarmChanges = 0;
-  graph.onChange = publish;
-  swarm.onChange = () => (swarmChanges += 1);
-  assert.equal(graph.progressView(), null);
-  graph.declare("Health", [{ itemId: "a", instruction: "Scan" }, { itemId: "c", instruction: "Merge", dependsOn: ["a"] }]);
+  engine = new GraphEngine({
+    openOwner: (mode, task) => (owner.activate(mode, task) ? undefined : "busy"),
+    closeOwner: (reason) => {
+      owner.finish(reason);
+      publish();
+    },
+    canRun: () => owner.getActive() !== undefined,
+    onChange: publish,
+  });
+  engine.wakeDelayMs = 0;
+  engine.bind(join(dir, "graph.json"));
+  let n = 0;
+  engine.setRunner({ start: () => ({ operatorId: `op${++n}` }), stop: () => undefined });
+  engine.update({ mode: "graph", task: "Health", addWork: [{ workId: "a", instruction: "Scan" }, { workId: "c", instruction: "Merge", inputIds: ["a"] }] });
   assert.equal(bus.get(UNIPI_EVENTS.LH_PROGRESS)?.current?.items.length, 2);
-  graph.markDispatched("a");
   assert.equal(bus.get(UNIPI_EVENTS.LH_PROGRESS)?.current?.items[0]?.status, "running");
-  graph.report("a", "completed", "found 3");
-  graph.markDispatched("c");
-  graph.report("c", "completed", "merged");
+  assert.deepEqual(bus.get(UNIPI_EVENTS.LH_PROGRESS)?.current?.items[1]?.deps, ["a"]);
+  const graphId = engine.current()!.graphId;
+  engine.settle(graphId, "a", { status: "completed", text: "found 3" });
+  engine.settle(graphId, "c", { status: "completed", text: "merged" });
+  engine.update({ mode: "graph", finish: { resultIds: ["r-c"], reason: "done" } });
   const final = bus.get(UNIPI_EVENTS.LH_PROGRESS)!;
   assert.equal(final.current, undefined);
   assert.equal(final.last?.status, "done");
   assert.deepEqual(final.last?.items.map((i) => i.summary), ["found 3", "merged"]);
   assert.ok(final.log.some((l) => l.text.startsWith("Graph finished")));
-  swarm.start("R", [{ itemId: "x", instruction: "x" }, { itemId: "y", instruction: "y" }]);
-  swarm.markDispatched("x");
-  swarm.report("x", "completed");
-  assert.equal(swarmChanges, 3);
-  assert.equal(swarm.progressView()?.items.length, 2);
+  engine.dispose();
 });
 
 // ── renderer ────────────────────────────────────────────────────────────────
@@ -258,7 +297,7 @@ test("view: ralph checklist + iteration bar; goal % bar + turns + estimate", () 
 
 test("view: many items degrade to '+N more' instead of overflowing", () => {
   const items = Array.from({ length: 30 }, (_, i) => ({ itemId: `i${i}`, instruction: `task ${i}`, dependsOn: [] as string[], wave: 0, status: "queued" as const, attempts: 0 }));
-  const snap = lhProgressSnapshot({ owner: { kind: "graph", label: "Big", status: "active" }, graph: { task: "Big", items }, now: 0 });
+  const snap = lhProgressSnapshot({ owner: { kind: "graph", label: "Big", status: "active" }, graph: graphState("graph", "Big", items), now: 0 });
   const lines = renderProgressView(plain, snap, 90, 30, 0);
   assert.equal(lines.length, 30);
   assert.ok(frameWidthOk(lines, 90));
@@ -269,19 +308,4 @@ test("viewHeight clamps to the terminal", () => {
   assert.equal(viewHeight(24), 22);
   assert.equal(viewHeight(200), 48);
   assert.equal(viewHeight(5), 8);
-});
-
-test("swarm_report status dispatched marks the item running without a fake failure", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "lh-swarm-disp-"));
-  const owner = new OwnerCoordinator({ statePath: () => join(dir, "state.json") });
-  const ledger = new SwarmLedger(owner);
-  const tools: Record<string, (p: unknown) => Promise<{ content: Array<{ text: string }> }>> = {};
-  const { registerSwarmTools } = await import("../tools/swarm.js");
-  registerSwarmTools({ registerTool: (t: { name: string; execute: (id: string, p: unknown) => never }) => (tools[t.name] = (p) => t.execute("id", p)) } as never, { ledger, owner });
-  ledger.start("R", [{ itemId: "x", instruction: "x" }, { itemId: "y", instruction: "y" }]);
-  const res = await tools.swarm_report!({ item_id: "x", status: "dispatched" });
-  assert.match(res.content[0]!.text, /Marked x dispatched/);
-  assert.equal(ledger.progressView()?.items[0]?.status, "dispatched");
-  const again = await tools.swarm_report!({ item_id: "x", status: "dispatched" });
-  assert.match(again.content[0]!.text, /already dispatched/);
 });

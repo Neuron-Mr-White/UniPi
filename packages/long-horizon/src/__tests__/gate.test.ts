@@ -42,7 +42,7 @@ test("toolNameOf handles OpenAI and Anthropic shapes", () => {
 test("goal mode hides other modes' tools; delegation is never hidden", () => {
   const hidden = hiddenToolNames("goal");
   assert.equal(hidden.has("ralph_done"), true);
-  assert.equal(hidden.has("swarm_status"), true);
+  assert.equal(hidden.has("agent_swarm_status"), true);
   assert.equal(hidden.has("run_subagent"), false, "run_subagent is first-class in every mode");
   assert.equal(hidden.has("create_goal"), false);
   assert.equal(hidden.has("todowrite"), false);
@@ -54,7 +54,7 @@ test("swarm mode exposes delegation but hides goal tools", () => {
   assert.equal(hidden.has("run_subagent"), false);
   assert.equal(hidden.has("create_goal"), true);
   assert.equal(hidden.has("update_goal"), true);
-  assert.equal(hidden.has("swarm_yield"), false);
+  assert.equal(hidden.has("yield_agent_graph"), false);
 });
 
 test("none mode hides every mode tool but never infrastructure", () => {
@@ -159,7 +159,7 @@ test("UNI-165: /unipi:graph → model asks a question (no owner yet) → the ans
   await pi.fire("Python");
   assert.equal(gate.current()?.mode, "graph", "the answer turn keeps graph mode");
   assert.equal(gate.displayMode(), "graph", "the footer keeps Graph Mode");
-  expectExactlyModeTools(pi.activeTools, ["view_agent_graph", "update_agent_graph", "graph_output", "todowrite"]);
+  expectExactlyModeTools(pi.activeTools, ["view_agent_graph", "update_agent_graph", "yield_agent_graph", "agent_output", "agent_swarm_status", "todowrite"]);
   await pi.fire("and one more follow-up");
   assert.equal(gate.current()?.mode, "graph");
   // Badge printed once for the command, not for the sticky follow-ups.
@@ -370,7 +370,7 @@ test("syncModeTools flips mode surfaces and never touches non-mode tools", () =>
 
   // swarm: the swarm trio + todowrite; goal tools gone.
   assert.equal(syncModeTools(pi, "swarm"), true);
-  expectExactlyModeTools(pi.activeTools, ["swarm_status", "swarm_yield", "swarm_report", "todowrite"]);
+  expectExactlyModeTools(pi.activeTools, ["update_agent_graph", "yield_agent_graph", "agent_swarm_status", "agent_output", "view_agent_graph", "todowrite"]);
   assert.deepEqual(pi.activeTools.filter((n) => !ALL_MODE_TOOLS.includes(n)), ["bash", "read", "sidekick"]);
 
   // none: everything mode-owned gone again.
@@ -437,14 +437,14 @@ test("owner activate/resume outside a turn sync the owner's mode tools", () => {
 
   // Command-runner activation between turns (kanboard unipi:goal-start shape).
   owner.activate("swarm", "review");
-  expectExactlyModeTools(pi.activeTools, ["swarm_status", "swarm_yield", "swarm_report", "todowrite"]);
+  expectExactlyModeTools(pi.activeTools, ["update_agent_graph", "yield_agent_graph", "agent_swarm_status", "agent_output", "view_agent_graph", "todowrite"]);
 
   // Suspend syncs nothing (the next resolution is authoritative)...
   owner.suspend("paused(user_requested)");
-  expectExactlyModeTools(pi.activeTools, ["swarm_status", "swarm_yield", "swarm_report", "todowrite"]);
+  expectExactlyModeTools(pi.activeTools, ["update_agent_graph", "yield_agent_graph", "agent_swarm_status", "agent_output", "view_agent_graph", "todowrite"]);
   // ...and the /unipi:continue-style resume turns them back on.
   owner.resume();
-  expectExactlyModeTools(pi.activeTools, ["swarm_status", "swarm_yield", "swarm_report", "todowrite"]);
+  expectExactlyModeTools(pi.activeTools, ["update_agent_graph", "yield_agent_graph", "agent_swarm_status", "agent_output", "view_agent_graph", "todowrite"]);
   rmSync(dir, { recursive: true, force: true });
 });
 

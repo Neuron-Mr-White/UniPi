@@ -24,7 +24,7 @@ export const READ_ONLY_TOOLS = new Set([
   "web_search", "multi_web_content_read", "web_llm_summarize",
   "bg_status", "bg_logs", "read_subagent",
   "compactor_stats", "compactor_doctor", "context_budget", "ctx_budget",
-  "loop_status", "swarm_status", "view_agent_graph", "get_goal",
+  "loop_status", "agent_swarm_status", "view_agent_graph", "agent_output", "get_goal",
 ]);
 
 export type Decision =
