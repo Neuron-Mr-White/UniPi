@@ -335,3 +335,17 @@ test("without a runner the tools refuse clearly", async () => {
   assert.match(res.content[0]!.text, /subagents are not loaded/);
   rmSync(r.dir, { recursive: true, force: true });
 });
+
+test("shutdown freezes: late cancellations don't settle; the next bind resumes the work", () => {
+  const r = rig();
+  r.engine.update({ mode: "graph", task: "audit", addWork: DAG });
+  r.engine.shutdown();
+  const graph = r.engine.current()!;
+  r.engine.settle(graph.graphId, "scan-a", { status: "cancelled", text: "" });
+  assert.equal(graph.work.find((w) => w.workId === "scan-a")?.status, "running", "frozen: cancellation ignored");
+  r.engine.bind(r.path);
+  const again = r.engine.current()!.work.find((w) => w.workId === "scan-a")!;
+  assert.equal(again.status, "queued");
+  assert.equal(again.resumeOperatorId, "op1");
+  rmSync(r.dir, { recursive: true, force: true });
+});

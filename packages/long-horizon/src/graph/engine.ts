@@ -245,6 +245,8 @@ export class GraphEngine {
   private retryTimer: ReturnType<typeof setTimeout> | undefined;
   /** Re-admission delay after a capacity refusal. */
   retryDelayMs = 5_000;
+  /** Set by shutdown(): ignore late child outcomes; cleared by bind(). */
+  private frozen = false;
   private pendingWake = false;
   /** Aggregation window for simultaneous completions → one wake. */
   wakeDelayMs = 400;
@@ -263,6 +265,7 @@ export class GraphEngine {
    */
   bind(path: string): void {
     this.path = path;
+    this.frozen = false;
     this.file = readGraphFile(path);
     this.reportedAttention.clear();
     const graph = this.file.current;
@@ -671,6 +674,7 @@ export class GraphEngine {
    * settle retries. Returns the started work ids.
    */
   reconcile(): string[] {
+    if (this.frozen) return [];
     const graph = this.open();
     if (!graph || !this.runner || !this.deps.canRun()) return [];
     const started: string[] = [];
@@ -752,6 +756,7 @@ export class GraphEngine {
 
   /** A child finished (runner callback). Commits the result, reconciles, maybe wakes. */
   settle(graphId: string, workId: string, outcome: WorkOutcome): void {
+    if (this.frozen) return;
     const graph = this.file.current?.graphId === graphId ? this.file.current : undefined;
     if (!graph) return;
     const work = graph.work.find((entry) => entry.workId === workId);
@@ -794,6 +799,16 @@ export class GraphEngine {
       this.reconcile();
     }, this.retryDelayMs);
     this.retryTimer.unref?.();
+  }
+
+  /**
+   * Session end: freeze the graph as-is. Children the subagents manager
+   * cancels on shutdown must NOT settle as stopped — their work stays
+   * `running` on disk so the next session_start resumes it in its session.
+   */
+  shutdown(): void {
+    this.frozen = true;
+    this.dispose();
   }
 
   /** Drop timers (session shutdown / tests). */

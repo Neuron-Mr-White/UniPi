@@ -552,6 +552,13 @@ export default function longHorizon(pi: ExtensionAPI): void {
     publishLh();
   });
 
+  // UNI-280: freeze the graph BEFORE subagents cancels its children on
+  // shutdown (long-horizon loads first, handlers run in registration order),
+  // so in-flight work stays `running` on disk and resumes next session.
+  pi.on("session_shutdown", () => {
+    graphEngine.shutdown();
+  });
+
   bus.emit(UNIPI_EVENTS.MODULE_READY, {
     name: "@pi-unipi/long-horizon",
     version,
