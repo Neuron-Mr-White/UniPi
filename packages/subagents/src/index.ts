@@ -349,7 +349,7 @@ export default function subagents(pi: ExtensionAPI, deps?: { manager?: SubagentM
   }
 
   // One bottom pane with the background tasks (UNI-126): the Subagents tab.
-  // The tray owns ↓ and ←/→; nothing is drawn while it is closed.
+  // The tray owns ↓ and ←/→; closed, it shows only a one-line "↓ open" hint.
   registerWorkTrayTab(pi, {
     id: "subagents",
     label: "Subagents",

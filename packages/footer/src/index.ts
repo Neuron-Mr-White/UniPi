@@ -269,7 +269,7 @@ function setupFooterUI(pi: ExtensionAPI, ctx: ExtensionContext, state: FooterSta
         // bg: npm test · 12s") — the pane must not read as finished. It is
         // a status, not part of the bg dots, so it ignores processLine/
         // strip-hiding settings. It is the only bg/subagent line outside
-        // the ↓ work tray (the tray draws nothing while closed).
+        // the ↓ work tray (closed, the tray draws only its one "↓ open" hint).
         const ctx = state.piContext as { isIdle?: () => boolean } | undefined;
         const now = Date.now();
         const frame = Math.floor(now / 80);

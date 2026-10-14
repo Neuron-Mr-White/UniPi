@@ -6,7 +6,10 @@
  *   ── ▌Background tasks (2 · 1 running)▐  Subagents (3) ───── ←→ tabs · esc close
  *   <the active tab's pane: the bg task list/logs, or the subagent list/transcript>
  *
- * Nothing is drawn while the tray is closed (no strip, no spinners).
+ * While the tray is closed and has items, ONE dim hint line sits under the
+ * editor (UNI-291) — `Background tasks 1 running · Subagents 2 · ↓ open` —
+ * so ↓ is discoverable; nothing at all when the tray is empty or open (no
+ * strip chrome, no per-item spinners).
  *
  * Owners register a tab (`registerWorkTrayTab`) and supply the pane; this
  * module owns the tab strip, ←/→ switching, the ↓ key and the open/close
@@ -63,11 +66,9 @@ export interface WorkTrayTab {
 
 export type TrayTheme = Pick<Theme, "fg" | "bold">;
 
-/** A zero-line widget: only there to learn the TUI (for the ↓ focus check).
- *  The tray draws NOTHING while closed — no strip, no spinners (the user
- *  found the always-on "◆ Background tasks … · ↓ open" + per-agent spinner
- *  lines messy); the footer's single "Working… · ↓ open" line is the only
- *  hint that wake-capable work is pending. */
+/** The below-editor widget: learns the TUI (for the ↓ focus check) and draws
+ *  the one-line hint while the tray is closed and has items (UNI-291). The
+ *  old "◆ …" strip + per-agent spinner lines stay gone (5b7f2e1: messy). */
 const STRIP_KEY = "work-tray-strip";
 export const TRAY_HINT = "←→ tabs · esc close";
 
@@ -261,6 +262,47 @@ export class WorkTray implements Component {
   }
 }
 
+// ── hint line (below the editor while the tray is closed) ─────────────────────
+
+export const TRAY_OPEN_HINT = "↓ open";
+
+/** One tab's part of the hint: `Label N`, `Label N running` (all running) or
+ *  `Label N (k running)`; level 1 uses the short label, level 2 also the
+ *  compact `Short N/k` (k running of N). */
+function hintPart(tab: WorkTrayTab, c: WorkTrayCounts, level: number): string {
+  const label = level > 0 ? (tab.shortLabel ?? tab.label) : tab.label;
+  const n = String(c.total);
+  if (c.running <= 0) return `${label} ${n}`;
+  if (level >= 2) return `${label} ${n}/${String(c.running)}`;
+  return c.running >= c.total ? `${label} ${n} running` : `${label} ${n} (${String(c.running)} running)`;
+}
+
+/** The plain hint text (no colour) for `width` columns, or undefined when no
+ *  visible tab has items. Full labels, then short labels, then compact
+ *  counts; past that the counts are cut so "↓ open" always stays visible. */
+export function trayHintText(list: readonly WorkTrayTab[], width: number): string | undefined {
+  const items = list.map((tab) => ({ tab, c: safeCounts(tab) })).filter(({ c }) => c.total > 0);
+  if (items.length === 0 || width <= 0) return undefined;
+  const suffix = ` · ${TRAY_OPEN_HINT}`;
+  let line = "";
+  for (const level of [0, 1, 2]) {
+    line = items.map(({ tab, c }) => hintPart(tab, c, level)).join(" · ");
+    if (visibleWidth(line) + visibleWidth(suffix) <= width) return `${line}${suffix}`;
+  }
+  const room = width - visibleWidth(suffix);
+  if (room < 4) return truncateToWidth(TRAY_OPEN_HINT, width, "");
+  return `${truncateToWidth(line, room, "…")}${suffix}`;
+}
+
+/** The below-editor hint: [] when the tray is open or empty, else one dim
+ *  line one column short of the terminal (exactly-full-width lines desync
+ *  wrapping terminals — footer issue #31), indented like the editor text. */
+export function renderTrayHint(theme: TrayTheme, list: readonly WorkTrayTab[], width: number, open = false): string[] {
+  if (open || width <= 2) return [];
+  const text = trayHintText(list, width - 2);
+  return text === undefined ? [] : [` ${theme.fg("dim", text)}`];
+}
+
 // ── registration + lifecycle ────────────────────────────────────────────────
 
 /** True while the tray is open. */
@@ -301,10 +343,29 @@ function ensureWorkTray(pi: ExtensionAPI): void {
       unsubInput?.();
       unsubInput = undefined;
       if (!ctx.hasUI) return;
-      // Zero-line widget: only captures the TUI ref for the ↓ focus check.
-      ctx.ui.setWidget(STRIP_KEY, (tui) => {
+      // The hint line under the editor (UNI-291), also the TUI ref for the
+      // ↓ focus check. Renders nothing with no items, so idle sessions show
+      // no line; work changes re-render it (the TUI diffs, so an unchanged
+      // line costs nothing and never moves focus).
+      ctx.ui.setWidget(STRIP_KEY, (tui, theme) => {
         tuiRef = tui;
-        return { render: () => [], invalidate() {} };
+        let unsub: () => void = () => {};
+        try {
+          unsub = subscribeWorkChanges(() => tui.requestRender());
+        } catch {
+          /* the line is still right on the next render */
+        }
+        return {
+          render: (width: number) => {
+            try {
+              return renderTrayHint(theme, sortedTabs(), width, openTray !== undefined);
+            } catch {
+              return [];
+            }
+          },
+          invalidate() {},
+          dispose: () => unsub(),
+        };
       }, { placement: "belowEditor" });
       unsubInput = ctx.ui.onTerminalInput(onTerminalInput);
     } catch {

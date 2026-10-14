@@ -10,6 +10,8 @@ import {
   isWorkTrayOpen,
   workTrayItemCount,
   editorIdleFor,
+  renderTrayHint,
+  trayHintText,
   resetWorkTrayForTests,
   workTrayInputForTests,
   type WorkTrayTab,
@@ -253,21 +255,25 @@ describe("↓ handler + registration", () => {
     await first;
   });
 
-  test("session_start installs a zero-line widget (TUI ref only — nothing drawn while closed, even with running work) + input hook once per api; no UI → nothing", () => {
+  test("session_start installs the below-editor hint widget (one line with items, nothing without) + input hook once per api; no UI → nothing", () => {
     const pi = fakePi();
-    registerWorkTrayTab(pi as never, tab("bg", 0, 3, 2));
-    registerWorkTrayTab(pi as never, tab("subagents", 1, 2, 1));
-    const widgets: string[] = [];
-    const rendered: string[][] = [];
+    let bgTotal = 3;
+    registerWorkTrayTab(pi as never, { ...tab("bg", 0, 3, 2), counts: () => ({ total: bgTotal, running: Math.min(bgTotal, 2) }) });
+    registerWorkTrayTab(pi as never, tab("subagents", 1, 0, 0));
+    const widgets: Array<{ key: string; placement?: string }> = [];
+    let widget: { render(w: number): string[]; dispose?(): void } | undefined;
     let inputs = 0;
     const start = pi.handlers.get("session_start")!;
-    const setWidget = (k: string, f: (tui: unknown, th: unknown) => { render(w: number): string[] }) => {
-      widgets.push(k);
-      rendered.push(f({ requestRender() {} }, theme).render(120));
+    const setWidget = (k: string, f: (tui: unknown, th: unknown) => { render(w: number): string[] }, opts?: { placement?: string }) => {
+      widgets.push({ key: k, placement: opts?.placement });
+      widget = f({ requestRender() {} }, theme);
     };
     start({}, { hasUI: true, ui: { setWidget, onTerminalInput: () => (inputs++, () => {}) } });
-    assert.deepEqual(widgets, ["work-tray-strip"]);
-    assert.deepEqual(rendered, [[]], "no strip / spinner lines below the editor");
+    assert.deepEqual(widgets, [{ key: "work-tray-strip", placement: "belowEditor" }]);
+    assert.deepEqual(widget!.render(120), [" Background tasks 3 (2 running) · ↓ open"], "one hint line, no spinner/preview lines");
+    bgTotal = 0;
+    assert.deepEqual(widget!.render(120), [], "no items → no line");
+    widget!.dispose?.();
     assert.equal(inputs, 1);
     start({}, { hasUI: false, ui: {} });
     assert.equal(inputs, 1);
@@ -319,5 +325,48 @@ describe("↓ handler + registration", () => {
     const pi = fakePi();
     registerWorkTrayTab(pi as never, { ...tab("bg", 0, 2), visible: () => { throw new Error("x"); } });
     assert.equal(workTrayItemCount(), 0);
+  });
+});
+
+describe("closed-tray hint line (UNI-291)", () => {
+  const bg = (total: number, running = 0) => tab("bg", 0, total, running);
+  const sa = (total: number, running = 0) => tab("subagents", 1, total, running);
+
+  test("one part per tab with items: all running / some running / none running, then ↓ open", () => {
+    assert.equal(trayHintText([bg(1, 1), sa(2)], 120), "Background tasks 1 running · Subagents 2 · ↓ open");
+    assert.equal(trayHintText([bg(3, 1), sa(2, 2)], 120), "Background tasks 3 (1 running) · Subagents 2 running · ↓ open");
+    assert.equal(trayHintText([bg(0), sa(2)], 120), "Subagents 2 · ↓ open", "empty tabs are left out");
+  });
+
+  test("nothing when every tab is empty (or there are no tabs)", () => {
+    assert.equal(trayHintText([bg(0), sa(0)], 120), undefined);
+    assert.equal(trayHintText([], 120), undefined);
+    assert.deepEqual(renderTrayHint(theme, [bg(0), sa(0)], 120), []);
+  });
+
+  test("narrow terminals: short labels, then compact N/k counts, then cut — ↓ open always stays", () => {
+    const list = [bg(3, 1), sa(2, 2)];
+    assert.equal(trayHintText(list, 53), "Bg tasks 3 (1 running) · Subagents 2 running · ↓ open");
+    assert.equal(trayHintText(list, 52), "Bg tasks 3/1 · Subagents 2/2 · ↓ open");
+    const cut = trayHintText(list, 25)!;
+    assert.ok(cut.endsWith(" · ↓ open"), cut);
+    assert.ok(visibleWidth(cut) <= 25, cut);
+    assert.equal(trayHintText(list, 8), "↓ open");
+  });
+
+  test("renderTrayHint: one dim line, one column short of the terminal; [] while the tray is open", () => {
+    const fg: string[] = [];
+    const th = { fg: (c: string, t: string) => (fg.push(c), t), bold: (t: string) => t } as never;
+    const lines = renderTrayHint(th, [bg(1, 1)], 80);
+    assert.deepEqual(lines, [" Background tasks 1 running · ↓ open"]);
+    assert.deepEqual(fg, ["dim"]);
+    for (const w of [10, 20, 30, 41]) for (const l of renderTrayHint(theme, [bg(3, 1), sa(2, 2)], w)) assert.ok(visibleWidth(l) <= w - 1, `${w}: ${l}`);
+    assert.deepEqual(renderTrayHint(theme, [bg(1, 1)], 80, true), [], "open tray → no line");
+    assert.deepEqual(renderTrayHint(theme, [bg(1, 1)], 2), []);
+  });
+
+  test("a throwing counts() reads as empty instead of breaking the line", () => {
+    const broken = { ...bg(1), counts: () => { throw new Error("x"); } };
+    assert.equal(trayHintText([broken, sa(2)], 120), "Subagents 2 · ↓ open");
   });
 });
