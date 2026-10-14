@@ -273,3 +273,29 @@ export function historyPage(branch: readonly unknown[], before: string, budget =
   }
   return { entries: out.reverse(), more };
 }
+
+/** UNI-290: what goes back into the app's composer after `tree_go` to a user
+ * message — its text (pi's own `editorText` when the runtime passes it on,
+ * else read off the entry, joined the same way pi does) and its images as
+ * the usual phone-safe refs (inline thumbnail or a `mediaRef`). */
+export type TreeGoRestore = { restore: { text: string; images?: Array<{ mime: string; data?: string; mediaRef?: string; bytes?: number }> } };
+
+/** The ack extras for a `tree_go` that landed: only when `target` is a user
+ * message and pi really moved the leaf off it (to its parent) — a no-op
+ * navigation (already there) restores nothing. */
+export function treeGoRestore(target: unknown, editorText: unknown, leafAfter: string | null): TreeGoRestore | undefined {
+  const e = target as { id?: string; type?: string; message?: { role?: string; content?: unknown } } | null | undefined;
+  if (!e || e.type !== "message" || e.message?.role !== "user") return undefined;
+  if (leafAfter !== null && leafAfter === e.id) return undefined;
+  const content = e.message.content;
+  const parts = Array.isArray(content) ? (content as Array<{ type?: string; text?: unknown }>) : [];
+  const fromEntry = typeof content === "string" ? content : parts.filter((p) => p?.type === "text" && typeof p.text === "string").map((p) => p.text as string).join("");
+  const text = typeof editorText === "string" ? editorText : fromEntry;
+  const images = parts
+    .filter((p) => p?.type === "image")
+    .map((p) => phoneSafe(p) as { mime?: string; data?: string; mediaRef?: string; bytes?: number } | null)
+    .filter((p): p is { mime?: string; data?: string; mediaRef?: string; bytes?: number } => !!p && (typeof p.data === "string" || typeof p.mediaRef === "string"))
+    .map((p) => ({ mime: p.mime ?? "image/*", ...(p.data ? { data: p.data } : {}), ...(p.mediaRef ? { mediaRef: p.mediaRef } : {}), ...(typeof p.bytes === "number" ? { bytes: p.bytes } : {}) }));
+  if (!text && !images.length) return undefined;
+  return { restore: { text: clipText(text, TEXT_CLIP), ...(images.length ? { images } : {}) } };
+}

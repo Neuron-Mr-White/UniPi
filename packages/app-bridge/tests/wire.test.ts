@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { LineSplitter, parseIn } from "../src/wire.js";
-import { clipText, fitLine, historyPage, jsonBytes, LINE_BUDGET, phoneSafe, snapshotEntries, wantedEntry } from "../src/snapshot.js";
+import { clipText, fitLine, historyPage, jsonBytes, LINE_BUDGET, phoneSafe, snapshotEntries, treeGoRestore, wantedEntry } from "../src/snapshot.js";
 import { DialogHub, wrapUi } from "../src/dialogs.js";
 
 describe("parseIn", () => {
@@ -278,5 +278,42 @@ describe("history paging", () => {
   it("parses the history request", () => {
     assert.deepEqual(parseIn('{"t":"history","before":"e1","ref":"h"}'), { t: "history", before: "e1", ref: "h" });
     assert.ok("bad" in (parseIn('{"t":"history"}') as object));
+  });
+});
+
+describe("treeGoRestore (UNI-290)", () => {
+  const user = (content: unknown) => ({ id: "u", type: "message", message: { role: "user", content } });
+
+  it("a user message's text: string content, or its text parts joined like pi's contentText(…, \"\")", () => {
+    assert.deepEqual(treeGoRestore(user("fix the bug"), undefined, "p"), { restore: { text: "fix the bug" } });
+    assert.deepEqual(treeGoRestore(user([{ type: "text", text: "a" }, { type: "text", text: "b" }]), undefined, "p"), { restore: { text: "ab" } });
+    assert.deepEqual(treeGoRestore(user("x"), "editor text", null), { restore: { text: "editor text" } });
+  });
+
+  it("images come back as phone-safe refs: small ones inline, big ones a mediaRef", () => {
+    const big = "A".repeat(40 * 1024);
+    const r = treeGoRestore(
+      user([
+        { type: "text", text: "look [image 1] [image 2]" },
+        { type: "image", mimeType: "image/png", data: "AAAA" },
+        { type: "image", mimeType: "image/jpeg", data: big },
+      ]),
+      undefined,
+      "p",
+    )!;
+    assert.equal(r.restore.text, "look [image 1] [image 2]");
+    assert.equal(r.restore.images!.length, 2);
+    assert.deepEqual(r.restore.images![0], { mime: "image/png", data: "AAAA", bytes: 3 });
+    assert.equal(r.restore.images![1]!.mime, "image/jpeg");
+    assert.match(r.restore.images![1]!.mediaRef!, /^m\d+-\d+$/);
+    assert.equal(r.restore.images![1]!.data, undefined);
+  });
+
+  it("nothing for non-user targets, a no-op navigation (leaf still on the target) or an empty message", () => {
+    assert.equal(treeGoRestore({ id: "a", type: "message", message: { role: "assistant", content: [{ type: "text", text: "hi" }] } }, undefined, "p"), undefined);
+    assert.equal(treeGoRestore({ id: "c", type: "custom_message", content: "x" }, undefined, "p"), undefined);
+    assert.equal(treeGoRestore(user("hi"), undefined, "u"), undefined);
+    assert.equal(treeGoRestore(user(""), undefined, "p"), undefined);
+    assert.equal(treeGoRestore(undefined, undefined, "p"), undefined);
   });
 });

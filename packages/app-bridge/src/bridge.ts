@@ -14,7 +14,7 @@ import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync
 import { homedir } from "node:os";
 import { join, relative, resolve as resolvePath } from "node:path";
 import { DialogHub, wrapUi } from "./dialogs.js";
-import { ENTRIES_BUDGET, HELLO_ENTRIES_BUDGET, LINE_BUDGET, fitLine, historyPage, jsonBytes, phoneSafe, snapshotEntries, clipText, editedAway, wantedEntry } from "./snapshot.js";
+import { ENTRIES_BUDGET, HELLO_ENTRIES_BUDGET, LINE_BUDGET, fitLine, historyPage, jsonBytes, phoneSafe, snapshotEntries, clipText, editedAway, wantedEntry, treeGoRestore, type TreeGoRestore } from "./snapshot.js";
 import { searchSession } from "./search.js";
 import {
   BRIDGE_PROTOCOL,
@@ -1510,11 +1510,18 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
       case "tree_go": {
         if (!(await ensureIdle(msg.force))) return write(sock, { t: "error", message: "pi is busy. Stop the current run first.", code: "busy", ref: msg.ref });
         try {
+          let restore: TreeGoRestore | undefined;
           await runCommandOp(async (cctx) => {
+            // Read before navigating: the target is a user message → pi moves
+            // the leaf to just before it, and (like /tree) its text goes back
+            // to the composer (UNI-290).
+            const target = cctx.sessionManager.getEntry?.(msg.id);
             const result = await cctx.navigateTree(msg.id, { summarize: msg.summarize });
             if (result.cancelled) throw new Error("Cancelled");
+            const leaf = cctx.sessionManager.getLeafId?.() ?? null;
+            restore = treeGoRestore(target, (result as { editorText?: unknown }).editorText, leaf);
           });
-          ack();
+          write(sock, { t: "ack", ref: msg.ref, ...(restore ?? {}) });
         } catch (error) {
           fail(error instanceof Error ? error.message : String(error));
         }

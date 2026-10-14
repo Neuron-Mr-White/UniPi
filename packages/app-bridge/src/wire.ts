@@ -275,8 +275,11 @@ export type OutMsg =
   | { t: "btw_list"; pages: BtwListPage[]; complete?: true; ref?: string }
   /** `code: "busy"`: new/resume/fork/tree_go while pi is running — the phone may retry with `force:true`. */
   | { t: "error"; message: string; ref?: string; code?: "busy" }
-  /** `as: "command"`: the prompt ran an extension command (no chat message follows). */
-  | { t: "ack"; ref?: string; as?: "command" }
+  /** `as: "command"`: the prompt ran an extension command (no chat message follows).
+   * `restore` (UNI-290, `tree_go` only): the target was a user message, so pi
+   * moved the leaf to just before it — its text (and images, phone-safe refs)
+   * go back into the phone's composer, like /tree puts it in the TUI editor. */
+  | { t: "ack"; ref?: string; as?: "command"; restore?: { text: string; images?: Array<{ mime: string; data?: string; mediaRef?: string; bytes?: number }> } }
   /** The session is being replaced (new/resume/fork/reload): reconnect to get the new session's hello. */
   | { t: "reconnect"; reason: string }
   /** A page of older entries (oldest first) ending right before `before`. */

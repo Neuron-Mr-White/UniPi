@@ -76,6 +76,17 @@ function fakePi() {
       getEntries: () => branch,
       getLeafEntry: () => branch.at(-1),
       getLeafId: () => branch.at(-1)?.id ?? null,
+      getEntry: (id: string) => {
+        const walk = (nodes: any[]): any => {
+          for (const n of nodes) {
+            if (n.entry.id === id) return n.entry;
+            const hit = walk(n.children);
+            if (hit) return hit;
+          }
+          return undefined;
+        };
+        return walk(tree) ?? branch.find((e) => e.id === id);
+      },
       getTree: () => tree,
     },
     isIdle: () => idle,
@@ -428,6 +439,39 @@ describe("app bridge over a unix socket", () => {
     c.send({ t: "tree_go", id: "m1", summarize: true, ref: "g1" });
     await c.next((m) => m.t === "ack" && m.ref === "g1");
     assert.deepEqual(f.calls.at(-1), { op: "navigateTree", args: ["m1", { summarize: true }] });
+  });
+
+  it("UNI-290: tree_go to a user message acks with its text (pi's editorText, else the entry's own text) for the composer; a non-user target adds nothing", async () => {
+    const saved = f.sessionOps.navigateTree;
+    const extra = { entry: { id: "u9", parentId: "m1", type: "message", timestamp: "t9", message: { role: "user", content: [{ type: "text", text: "a branch" }] } }, children: [] };
+    f.tree[0]!.children.push(extra);
+    try {
+      // The extension command context (TUI mode) passes no editorText on: read off the entry.
+      c.send({ t: "tree_go", id: "u9", ref: "u1" });
+      const a1 = await c.next((m) => m.t === "ack" && m.ref === "u1");
+      assert.deepEqual(a1.restore, { text: "a branch" });
+
+      // A runtime that does pass editorText: that wins.
+      f.sessionOps.navigateTree = async () => ({ cancelled: false, editorText: "from pi" }) as any;
+      c.send({ t: "tree_go", id: "u9", ref: "u2" });
+      const a2 = await c.next((m) => m.t === "ack" && m.ref === "u2");
+      assert.deepEqual(a2.restore, { text: "from pi" });
+
+      // An assistant message: the leaf goes there, nothing to restore (old ack shape).
+      f.sessionOps.navigateTree = saved;
+      c.send({ t: "tree_go", id: "m2", ref: "u3" });
+      const a3 = await c.next((m) => m.t === "ack" && m.ref === "u3");
+      assert.equal("restore" in a3, false);
+
+      // Cancelled navigation: an error, no restore.
+      f.sessionOps.navigateTree = async () => ({ cancelled: true });
+      c.send({ t: "tree_go", id: "u9", ref: "u4" });
+      const a4 = await c.next((m) => m.t === "error" && m.ref === "u4");
+      assert.equal(a4.message, "Cancelled");
+    } finally {
+      f.sessionOps.navigateTree = saved;
+      f.tree[0]!.children.pop();
+    }
   });
 
   it("while pi is busy, new/resume/fork/tree_go answer a busy error; force:true aborts, waits for idle, then runs", async () => {
