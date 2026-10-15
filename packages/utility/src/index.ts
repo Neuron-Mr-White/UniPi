@@ -23,7 +23,10 @@ import {
   openSettingsHub,
   chatModelsToCache,
   writeModelCache,
+  registerSkillCondition,
+  registerSkillConditionReason,
 } from "@pi-unipi/core";
+import { applyBrowserSection, readBrowserEnabled } from "./browser/state.js";
 import { registerUtilityCommands } from "./commands.js";
 import { registerAutoRename } from "./rename/index.js";
 import { registerMoveCommand } from "./move/index.js";
@@ -73,6 +76,19 @@ export default function (pi: ExtensionAPI) {
   registerSummarizeCommand(pi);
   registerAttachments(pi);
   registerImage(pi);
+
+  // skill:browser is only usable while the PC's browser is on (UNI-300):
+  // the host's browser.enabled, read from ~/.unipi/app-host/config.json
+  // (see src/browser/state.ts). Condition registered once at load; every
+  // before_agent_start below re-reads the cheap state and sets/clears the
+  // matching context section, so both the skill list and the prompt text
+  // move together and only change when the on/off state actually flips.
+  registerSkillCondition("browser", () => readBrowserEnabled());
+  registerSkillConditionReason("browser", () => "the browser is off on this PC — turn it on in the UniPi app");
+  pi.on("before_agent_start", (event) => {
+    applyBrowserSection(event.systemPromptOptions.sections as Record<string, string>);
+    return undefined;
+  });
   const style = readUtilSettings().render.style;
   registerToolRenderers(pi, style);
   try {

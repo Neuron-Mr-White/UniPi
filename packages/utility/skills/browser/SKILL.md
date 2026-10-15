@@ -62,6 +62,7 @@ agent-browser connect 41234        # the agent_http port, never the raw `http` p
 - If `stealth` is false, tell the user before scraping a bot-protected site: "the stealth browser isn't available (<reason>); this is plain Chrome and may get blocked".
 - If start fails with `no_display`, the PC has no screen session. CloakBrowser needs a visible window, so tell the user.
 - If it fails with `too_many`, too many profiles' browsers are open. Stop one you started (`unipi-host browser stop --profile <name>`) or ask.
+- If start is refused because the browser is off, tell the user to turn it on in the UniPi app (desktop pane / Settings) — don't retry the start yourself, and don't try `unipi-host browser enable` on their behalf.
 
 ## 4. Work
 

@@ -135,3 +135,34 @@ export function refreshRunningProfiles(now = Date.now(), maxAgeMs = PROFILES_CAC
 export function resetBrowserProfilesCache(): void {
   cache = undefined;
 }
+
+// ---- the context line (UNI-300) --------------------------------------------
+
+/** "default[, other, running, profiles]" — default always listed first. */
+export function profileList(running: readonly string[]): string {
+  const rest = running.filter((p) => p !== "default");
+  return ["default", ...rest].join(", ");
+}
+
+/** The exact line set in `systemPromptOptions.sections["unipi-browser"]` while the browser is on. */
+export function browserSectionText(running: readonly string[]): string {
+  return `The PC's browser is on (CloakBrowser, shown in the UniPi app; the user may be watching). To browse, scrape or fill forms use skill:browser. Profiles: ${profileList(running)}.`;
+}
+
+/**
+ * before_agent_start's whole browser-section decision, as one pure-ish
+ * function (testable without a fake pi/ctx): on → sets the section with
+ * the running profiles; off → removes it. Never throws.
+ */
+export function applyBrowserSection(sections: Record<string, string>, env: NodeJS.ProcessEnv = process.env): void {
+  try {
+    if (!readBrowserEnabled(env)) {
+      delete sections["unipi-browser"];
+      return;
+    }
+    refreshRunningProfiles();
+    sections["unipi-browser"] = browserSectionText(runningProfiles());
+  } catch {
+    // never block a turn over the browser line
+  }
+}
