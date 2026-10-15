@@ -13,7 +13,7 @@
 
 import { existsSync } from "node:fs";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { bus, getPackageVersion, harnessMetadata, HUB_OVERLAY_OPTIONS, MODULES, openSettingsHub, registerCommandRunner, setSettings, UNIPI_EVENTS } from "@pi-unipi/core";
+import { bus, getPackageVersion, harnessMetadata, HUB_OVERLAY_OPTIONS, MODULES, openSettingsHub, registerCommandRunner, setSettings, skillConditionPasses, skillConditionReason, UNIPI_EVENTS } from "@pi-unipi/core";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { applyRegistry, defaultMustShow, isBundledSkillLocation, isUnderDir, skillCommandName, skillDir, skillSource, type CatalogSkill } from "./src/registry.js";
@@ -135,10 +135,18 @@ export default function skillRegistry(pi: ExtensionAPI) {
   });
 
   // A skill turned off is gone for the session — /skill:name included.
+  // Same for a skill whose condition provider (e.g. utility's browser state,
+  // UNI-300) says it can't be used right now: a clear refusal, no attempt.
   pi.on("input", (event, ctx) => {
     try {
       const name = skillCommandName(event.text ?? "");
-      if (!name || !disabled.has(name)) return undefined;
+      if (!name) return undefined;
+      if (!skillConditionPasses(name)) {
+        const reason = skillConditionReason(name) ?? `Skill "${name}" is unavailable right now.`;
+        ctx.ui?.notify?.(reason, "warning");
+        return { action: "handled" as const };
+      }
+      if (!disabled.has(name)) return undefined;
       ctx.ui?.notify?.(`Skill "${name}" is turned off here. Turn it on in /unipi:skills.`, "warning");
       return { action: "handled" as const };
     } catch {
@@ -166,9 +174,13 @@ export default function skillRegistry(pi: ExtensionAPI) {
     try {
       const cwd = ctx.cwd ?? process.cwd();
       const options = event.systemPromptOptions;
-      const catalog = (options.skills ?? []) as unknown as CatalogSkill[];
-      lastCatalog = catalog;
+      const fullCatalog = (options.skills ?? []) as unknown as CatalogSkill[];
+      lastCatalog = fullCatalog;
       const settings = readSkillsSettings(cwd);
+
+      // Condition providers (e.g. the browser state, UNI-300) hide a skill
+      // before anything else sees it — it's as if it were never discovered.
+      const catalog = fullCatalog.filter((s) => skillConditionPasses(s.name));
 
       const vault = vaultDir();
       let pool = catalog;
