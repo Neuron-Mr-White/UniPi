@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.0.0-alpha.42] — 2026-10-16
+
+### Added
+- `skill:browser`: the agent uses the PC's browser, the one you see in the UniPi app, with `agent-browser`. While the browser is on, UniPi points agent-browser at it (`AGENT_BROWSER_CDP`), so `agent-browser open <url>` just works, with no start or connect step. The browser is CloakBrowser, a stealthy Chromium shown only in the app; the agent's clicks and typing look human, and you can take over. Needs UniPi host 0.5.0. (UNI-295, UNI-303)
+- The agent sees `skill:browser` and a one-line note only while the PC's browser is on. Turning it off hides both from the next prompt, and `/skill:browser` explains how to turn it on. Any skill can now be shown only when a condition holds (`registerSkillCondition`). (UNI-300)
+- The work tray has a hint again: while it has items, one dim line under the input reads, for example, "Background tasks 1 running · Subagents 2 · ↓ open". (UNI-291)
+- App: "Start from here" on one of your messages puts that message, with its images, back in the app's input, like `/tree` in the terminal. (UNI-290)
+
 ## [3.0.0-alpha.41] — 2026-10-13
 
 ### Changed
