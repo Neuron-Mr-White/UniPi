@@ -146,7 +146,57 @@ export function profileList(running: readonly string[]): string {
 
 /** The exact line set in `systemPromptOptions.sections["unipi-browser"]` while the browser is on. */
 export function browserSectionText(running: readonly string[]): string {
-  return `The PC's browser is on (CloakBrowser, shown in the UniPi app; the user may be watching). To browse, scrape or fill forms use skill:browser. Profiles: ${profileList(running)}.`;
+  return `The PC's browser is on (CloakBrowser, shown in the UniPi app; the user may be watching). \`agent-browser\` is already pointed at it (AGENT_BROWSER_CDP): just run \`agent-browser open <url>\`, \`snapshot\`, \`click @e1\`… — no start or connect step. See skill:browser. Profiles: ${profileList(running)}.`;
+}
+
+/** UNI-303: the host's stable agent address, from `<host dir>/browser-agent.json`. */
+export interface AgentEndpointFile {
+  port: number;
+  profile: string;
+  pid?: number;
+}
+
+export function readAgentEndpoint(env: NodeJS.ProcessEnv = process.env): AgentEndpointFile | undefined {
+  try {
+    const raw = JSON.parse(readFileSync(join(hostDir(env), "browser-agent.json"), "utf8")) as Partial<AgentEndpointFile>;
+    if (typeof raw.port !== "number" || raw.port <= 0 || raw.port > 65535) return undefined;
+    return { port: raw.port, profile: typeof raw.profile === "string" ? raw.profile : "default", ...(typeof raw.pid === "number" ? { pid: raw.pid } : {}) };
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * UNI-303: point agent-browser at the browser the user sees. While the
+ * browser is on and the host has published its stable address,
+ * `AGENT_BROWSER_CDP` is set in THIS process's env — pi's bash tool spreads
+ * `process.env` into every command, so a plain `agent-browser open …` drives
+ * the in-app browser. Off (or no host) → the variable is removed again, but
+ * only if we set it (a user's own value is never touched). Never throws.
+ */
+let managedCdp: string | undefined;
+export function applyAgentBrowserEnv(env: NodeJS.ProcessEnv = process.env, enabled = readBrowserEnabled(env)): string | undefined {
+  try {
+    const endpoint = enabled ? readAgentEndpoint(env) : undefined;
+    const ours = endpoint ? String(endpoint.port) : undefined;
+    const current = env.AGENT_BROWSER_CDP;
+    if (current !== undefined && current !== managedCdp) return current; // the user's own setting wins
+    if (ours) {
+      env.AGENT_BROWSER_CDP = ours;
+      managedCdp = ours;
+    } else if (managedCdp !== undefined) {
+      delete env.AGENT_BROWSER_CDP;
+      managedCdp = undefined;
+    }
+    return env.AGENT_BROWSER_CDP;
+  } catch {
+    return env.AGENT_BROWSER_CDP;
+  }
+}
+
+/** Tests only. */
+export function resetAgentBrowserEnv(): void {
+  managedCdp = undefined;
 }
 
 /**

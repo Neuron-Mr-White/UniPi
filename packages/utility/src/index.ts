@@ -26,7 +26,7 @@ import {
   registerSkillCondition,
   registerSkillConditionReason,
 } from "@pi-unipi/core";
-import { applyBrowserSection, readBrowserEnabled } from "./browser/state.js";
+import { applyAgentBrowserEnv, applyBrowserSection, readBrowserEnabled } from "./browser/state.js";
 import { registerUtilityCommands } from "./commands.js";
 import { registerAutoRename } from "./rename/index.js";
 import { registerMoveCommand } from "./move/index.js";
@@ -87,6 +87,14 @@ export default function (pi: ExtensionAPI) {
   registerSkillConditionReason("browser", () => "the browser is off on this PC — turn it on in the UniPi app");
   pi.on("before_agent_start", (event) => {
     applyBrowserSection(event.systemPromptOptions.sections as Record<string, string>);
+    applyAgentBrowserEnv();
+    return undefined;
+  });
+  // UNI-303: keep AGENT_BROWSER_CDP current for each command (pi's bash
+  // spreads process.env), so a toggle or a host restart mid-turn is picked
+  // up by the very next agent-browser call. Two small file reads.
+  pi.on("tool_call", (event) => {
+    if (event.toolName === "bash") applyAgentBrowserEnv();
     return undefined;
   });
   const style = readUtilSettings().render.style;
