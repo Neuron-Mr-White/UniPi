@@ -95,5 +95,6 @@ Rules on top of it:
 ## Troubleshooting
 
 - `unipi-host` not found → the UniPi host isn't installed on this PC. Tell the user, who can install it with the UniPi installer.
+- `agent-browser` not found → run `npm i -g agent-browser` (don't run `agent-browser install`: we use the PC's CloakBrowser).
 - The browser feature is off → `unipi-host browser enable` (the user's choice; ask first).
 - Still blocked on a protected site with `stealth: true` → say so honestly. Don't escalate to evasion tricks.
