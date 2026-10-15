@@ -62,7 +62,7 @@ unipi-host browser use shop-scrape
 - **"The user has taken over the browser; wait or ask them"** → stop, tell the user you're waiting or ask, and don't retry in a loop.
 - CAPTCHAs and 2FA: ask the user to do them in the app pane (they can take over), then continue.
 - Respect sites: no credential stuffing, no account-creation abuse, no hammering.
-- When done: close your tabs. Mention the profile you used. Remove a throwaway profile only if the user agrees, because it holds their login (`unipi-host browser profile rm <name>`).
+- When done: close your tabs. To close your tab: `agent-browser tab list`, then `agent-browser tab close t2`. Ids look like `t2`, not `2`. agent-browser won't close the last tab; that's fine, so leave it. Mention the profile you used. Remove a throwaway profile only if the user agrees, because it holds their login (`unipi-host browser profile rm <name>`).
 
 ## Troubleshooting
 
