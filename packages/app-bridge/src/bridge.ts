@@ -658,6 +658,23 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
     }
   };
 
+  // The model list changes after `hello`: providers that register late
+  // (pi-omniroute-bridge refreshes its provider in session_start, after this
+  // bridge's hello) or a /model in the TUI that loads more. A phone that
+  // connected early kept the first, partial list (only openrouter) until
+  // something forced a new hello. Push a `models` line whenever the list
+  // differs from the last one sent, and check a few times after start.
+  let lastModelsKey = "";
+  const modelsKey = (list: ModelInfo[]) => list.map((m) => `${m.provider}/${m.id}`).join("\n");
+  const pushModelsIfChanged = () => {
+    if (!ctx || clients.size === 0) return;
+    const list = models();
+    const key = modelsKey(list);
+    if (key === lastModelsKey) return;
+    lastModelsKey = key;
+    send({ t: "models", models: list } as OutMsg);
+  };
+
   // UNI-222: long-horizon progress (sticky LH_PROGRESS on the core bus).
   const lhProgress = (): LhProgressInfo | undefined => bus.get(UNIPI_EVENTS.LH_PROGRESS) as LhProgressInfo | undefined;
   // UNI-269: the working mode (sticky LH_STATE — the footer's "Graph Mode").
@@ -675,7 +692,11 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
       streaming: streaming ? { id: streaming.id, role: "assistant" as const, content: phoneSafe(streaming.content) as unknown[] } : undefined,
       tools: [...tools.values()].map((t) => ({ ...t, text: t.text ? clipText(t.text, 8 * 1024) : t.text })),
       commands: commands().map((x) => ({ ...x, description: x.description ? clipText(x.description, 160) : x.description })),
-      models: models(),
+      models: (() => {
+        const list = models();
+        lastModelsKey = modelsKey(list);
+        return list;
+      })(),
       dialogs: hub.list(),
       queue: queueView(),
       fusion: fusionPreset(),
@@ -1822,6 +1843,8 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
       setRemoteDialogs(hub);
       listen();
       writeRecord();
+      // Late providers (registered after this hello): re-check the model list.
+      for (const ms of [1500, 5000, 15000]) setTimeout(() => safe(pushModelsIfChanged)(), ms).unref?.();
       if (event?.reason && event.reason !== "startup") {
         streaming = undefined;
         tools.clear();
@@ -1988,6 +2011,7 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
   });
 
   on("agent_start", safe(() => {
+    pushModelsIfChanged();
     // A fresh run after a phone Stop: the queue delivers after THIS one.
     releaseHold();
     running = true;
@@ -2155,7 +2179,10 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
 
   // The preset's `active` changes with the model (Fusion leaves fusion mode
   // on a /model switch), so it rides along (UNI-212).
-  on("model_select", safe(() => stateWithFusion()));
+  on("model_select", safe(() => {
+    stateWithFusion();
+    pushModelsIfChanged();
+  }));
   on("thinking_level_select", safe(() => send({ t: "state", ...runState() })));
   on("session_compact", safe(() => {
     if (!ctx) return;
