@@ -26,7 +26,7 @@ import {
   registerSkillCondition,
   registerSkillConditionReason,
 } from "@pi-unipi/core";
-import { applyAgentBrowserEnv, applyBrowserSection, readBrowserEnabled } from "./browser/state.js";
+import { applyAgentBrowserEnv, applyBrowserSection, readBrowserEnabled, hostDir, hostInstalled } from "./browser/state.js";
 import { registerUtilityCommands } from "./commands.js";
 import { registerAutoRename } from "./rename/index.js";
 import { registerMoveCommand } from "./move/index.js";
@@ -40,6 +40,8 @@ import { installSimpleImageCollapse } from "./render/images.js";
 import { installHarnessRenderers, installHarnessUserRendering, withHarnessToolAnnotations } from "./render/harness.js";
 import { installHarnessProvenance } from "@pi-unipi/core";
 import { readUtilSettings } from "./settings.js";
+import { registerCronCommand } from "./cron/index.js";
+import { refreshCronSettingsMirror } from "./cron/settings.js";
 
 export { readUtilSettings } from "./settings.js";
 export { simpleWrapTool, simpleWrapped, installSimpleGroupEvents } from "./render/simple.js";
@@ -76,6 +78,7 @@ export default function (pi: ExtensionAPI) {
   registerSummarizeCommand(pi);
   registerAttachments(pi);
   registerImage(pi);
+  registerCronCommand(pi);
 
   // skill:browser is only usable while the PC's browser is on (UNI-300):
   // the host's browser.enabled, read from ~/.unipi/app-host/config.json
@@ -85,6 +88,20 @@ export default function (pi: ExtensionAPI) {
   // move together and only change when the on/off state actually flips.
   registerSkillCondition("browser", () => readBrowserEnabled());
   registerSkillConditionReason("browser", () => "the browser is off on this PC — turn it on in the UniPi app");
+  // skill:cron is only usable while unipi-host is actually installed
+  // (UNI-315): its CLI (`unipi-host cron …`) is what the skill drives, and
+  // with no host there is nothing for it to talk to. Same cheap check
+  // browser's gate uses: the host's config dir exists, or `unipi-host` is
+  // on PATH.
+  registerSkillCondition("cron", () => hostInstalled(hostDir()));
+  registerSkillConditionReason("cron", () => "unipi-host isn't installed on this PC — install the UniPi desktop app first");
+  // UNI-318: keep /unipi:settings → Cron showing the host's real settings
+  // (CLI/app edits, not just this hub's own writes). Best-effort, once per
+  // agent start; a host that can't be reached just keeps the last mirror.
+  pi.on("before_agent_start", () => {
+    void refreshCronSettingsMirror(process.cwd());
+    return undefined;
+  });
   pi.on("before_agent_start", (event) => {
     applyBrowserSection(event.systemPromptOptions.sections as Record<string, string>);
     applyAgentBrowserEnv();
