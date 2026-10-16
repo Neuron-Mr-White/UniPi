@@ -26,7 +26,7 @@ import {
   registerSkillCondition,
   registerSkillConditionReason,
 } from "@pi-unipi/core";
-import { applyAgentBrowserEnv, applyBrowserSection, readBrowserEnabled } from "./browser/state.js";
+import { applyAgentBrowserEnv, applyBrowserSection, readBrowserEnabled, hostDir, hostInstalled } from "./browser/state.js";
 import { registerUtilityCommands } from "./commands.js";
 import { registerAutoRename } from "./rename/index.js";
 import { registerMoveCommand } from "./move/index.js";
@@ -85,6 +85,13 @@ export default function (pi: ExtensionAPI) {
   // move together and only change when the on/off state actually flips.
   registerSkillCondition("browser", () => readBrowserEnabled());
   registerSkillConditionReason("browser", () => "the browser is off on this PC — turn it on in the UniPi app");
+  // skill:cron is only usable while unipi-host is actually installed
+  // (UNI-315): its CLI (`unipi-host cron …`) is what the skill drives, and
+  // with no host there is nothing for it to talk to. Same cheap check
+  // browser's gate uses: the host's config dir exists, or `unipi-host` is
+  // on PATH.
+  registerSkillCondition("cron", () => hostInstalled(hostDir()));
+  registerSkillConditionReason("cron", () => "unipi-host isn't installed on this PC — install the UniPi desktop app first");
   pi.on("before_agent_start", (event) => {
     applyBrowserSection(event.systemPromptOptions.sections as Record<string, string>);
     applyAgentBrowserEnv();
