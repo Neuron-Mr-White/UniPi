@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { SessionManager } from "@earendil-works/pi-coding-agent";
-import { withCommandEcho, COMMAND_ECHO_TYPE } from "./command-echo.js";
+import { ExtensionRunner, SessionManager } from "@earendil-works/pi-coding-agent";
+import { withCommandEcho, COMMAND_ECHO_TYPE, commandArgCompleters, patchExtensionRunnerCommandCompleters } from "./command-echo.js";
 
 function fakePi(overrides: Record<string, unknown> = {}) {
   const appended: Array<{ type: string; data: unknown }> = [];
@@ -147,4 +147,50 @@ test("UNI-276: a command's notify / custom screen are recorded as command-output
     { type: "unipi-command-output", data: { command: "/unipi:goal", text: "Mode command: Goal", level: "info" } },
     { type: "unipi-command-output", data: { command: "/unipi:goal", screen: true } },
   ]);
+});
+
+// ── UNI-304: completers for commands that never go through withCommandEcho ──
+
+test("UNI-304: patchExtensionRunnerCommandCompleters captures a real ExtensionRunner's completers for ANY extension's command, not just withCommandEcho's", () => {
+  // withCommandEcho() already called patchExtensionRunnerCommandCompleters()
+  // as a side effect of the tests above; call it again directly too, to
+  // prove it is idempotent and works standalone (e.g. from a fresh process
+  // that never wraps pi for a particular extension).
+  patchExtensionRunnerCommandCompleters();
+  const seen: string[] = [];
+  const ext = {
+    path: "third-party-ext",
+    resolvedPath: "third-party-ext",
+    sourceInfo: { source: "local" as const },
+    handlers: new Map(),
+    tools: new Map(),
+    messageRenderers: new Map(),
+    entryRenderers: new Map(),
+    commands: new Map([
+      [
+        "usage",
+        {
+          name: "usage",
+          sourceInfo: { source: "local" as const },
+          getArgumentCompletions: (prefix: string) => {
+            seen.push(prefix);
+            return [{ value: "today", label: "today" }].filter((x) => x.value.startsWith(prefix));
+          },
+          handler: async () => {},
+        },
+      ],
+    ]),
+    flags: new Map(),
+    shortcuts: new Map(),
+  };
+  // A bare-bones runtime/sessionManager/modelRegistry: resolveRegisteredCommands()
+  // only touches `this.extensions`, so stubs are enough here.
+  const runner = new ExtensionRunner([ext as never], {} as never, "/tmp", {} as never, {} as never);
+  // This is what the TUI's autocomplete and `getCommands()` both call.
+  runner.getRegisteredCommands();
+  const completer = commandArgCompleters().get("usage");
+  assert.equal(typeof completer, "function", "a command never wrapped by withCommandEcho still got its completer captured");
+  const items = completer!("to") as Array<{ value: string }>;
+  assert.deepEqual(items, [{ value: "today", label: "today" }]);
+  assert.deepEqual(seen, ["to"]);
 });
