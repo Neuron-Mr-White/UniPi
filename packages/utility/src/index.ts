@@ -41,6 +41,7 @@ import { installHarnessRenderers, installHarnessUserRendering, withHarnessToolAn
 import { installHarnessProvenance } from "@pi-unipi/core";
 import { readUtilSettings } from "./settings.js";
 import { registerCronCommand } from "./cron/index.js";
+import { refreshCronSettingsMirror } from "./cron/settings.js";
 
 export { readUtilSettings } from "./settings.js";
 export { simpleWrapTool, simpleWrapped, installSimpleGroupEvents } from "./render/simple.js";
@@ -94,6 +95,13 @@ export default function (pi: ExtensionAPI) {
   // on PATH.
   registerSkillCondition("cron", () => hostInstalled(hostDir()));
   registerSkillConditionReason("cron", () => "unipi-host isn't installed on this PC — install the UniPi desktop app first");
+  // UNI-318: keep /unipi:settings → Cron showing the host's real settings
+  // (CLI/app edits, not just this hub's own writes). Best-effort, once per
+  // agent start; a host that can't be reached just keeps the last mirror.
+  pi.on("before_agent_start", () => {
+    void refreshCronSettingsMirror(process.cwd());
+    return undefined;
+  });
   pi.on("before_agent_start", (event) => {
     applyBrowserSection(event.systemPromptOptions.sections as Record<string, string>);
     applyAgentBrowserEnv();
