@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.0.0-alpha.43] — 2026-10-16
+
+### Added
+- Cron: scheduled, unattended pi runs on your PC, run by the UniPi host (needs UniPi host 0.5.1). `skill:cron` sets jobs up from a plain request ("every weekday at 18:30 summarize my inbox"), with plain-language schedules, per-job notifications (ntfy, Gotify, Telegram) and an optional wake-up message to the session that set it. `/unipi:cron` lists jobs, their runs and results, and runs, stops, enables or pauses them. Cron settings are in `/unipi:settings`. (UNI-288, UNI-314–318)
+- `/skill:craft-skill` and `/skill:web` are listed as normal skills. (UNI-307)
+
+### Fixed
+- The UniPi app now gets argument suggestions for every extension's commands (e.g. `/usage `), not only UniPi's own. (UNI-304)
+- The app's model list stayed partial (only openrouter) when a provider such as OmniRoute registered after the app connected; the list is now pushed again when it changes.
+- Removing a steered message from the app no longer stops the run. (UNI-305)
+- `/reload` from the app reloads pi instead of being sent as a message. (UNI-308)
+
 ## [3.0.0-alpha.42] — 2026-10-16
 
 ### Added
