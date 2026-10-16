@@ -61,6 +61,8 @@ function fakePi() {
     switchSession: async (_path: string) => ({ cancelled: false }),
   };
   const calls: Array<{ op: string; args: unknown[] }> = [];
+  // Models a provider registers after the bridge's hello (pi-omniroute-bridge).
+  const lateModels: Array<{ provider: string; id: string; reasoning: boolean }> = [];
   const ctx = {
     mode: "tui",
     hasUI: true,
@@ -68,7 +70,7 @@ function fakePi() {
     cwd: "/tmp/proj",
     model,
     scopedModels: [],
-    modelRegistry: { getAvailable: () => [model, { provider: "q", id: "n", reasoning: false }], find: (p: string, id: string) => (p === "q" && id === "n" ? { provider: "q", id: "n" } : undefined) },
+    modelRegistry: { getAvailable: () => [model, { provider: "q", id: "n", reasoning: false }, ...lateModels], find: (p: string, id: string) => (p === "q" && id === "n" ? { provider: "q", id: "n" } : undefined) },
     sessionManager: {
       getSessionFile: () => "/tmp/proj/s.jsonl",
       getSessionId: () => "sid",
@@ -144,7 +146,7 @@ function fakePi() {
   const emit = async (name: string, event: any = {}) => {
     for (const h of handlers.get(name) ?? []) await h(event, ctx);
   };
-  return { pi, ctx, emit, sent, branch, tree, calls, sessionOps, setIdle: (v: boolean) => (idle = v), setPromptStartsRun: (v: boolean) => (promptStartsRun = v) };
+  return { pi, ctx, emit, sent, branch, tree, calls, sessionOps, lateModels, setIdle: (v: boolean) => (idle = v), setPromptStartsRun: (v: boolean) => (promptStartsRun = v) };
 }
 
 /** Fake SessionManager.list/listAll deps for `sessions{}` (the real bridge talks to disk). */
@@ -231,6 +233,21 @@ describe("app bridge over a unix socket", () => {
     assert.ok(hello.commands.some((x: any) => x.name === "new" && x.source === "builtin"));
     assert.ok(hello.commands.some((x: any) => x.name === "tree" && x.source === "builtin"));
     assert.ok(!hello.commands.some((x: any) => x.name === SESSION_COMMAND), "the hidden session command never reaches the phone");
+  });
+
+  it("pushes the model list again when a late provider adds models (omniroute registered after hello)", async () => {
+    f.lateModels.push({ provider: "omniroute", id: "claude-x", reasoning: true }, { provider: "omniroute", id: "gpt-y", reasoning: false });
+    await f.emit("agent_start", {});
+    const pushed = await c.next((m) => m.t === "models");
+    assert.equal(pushed.models.length, 4);
+    assert.ok(pushed.models.some((m: any) => m.provider === "omniroute" && m.id === "claude-x"));
+    // Nothing new → nothing sent again.
+    const before = c.msgs.filter((m: any) => m.t === "models").length;
+    await f.emit("agent_start", {});
+    await new Promise((r) => setTimeout(r, 50));
+    assert.equal(c.msgs.filter((m: any) => m.t === "models").length, before);
+    f.lateModels.length = 0;
+    await f.emit("agent_end", {});
   });
 
   it("idle prompt goes straight in; busy prompt steers or follows up", async () => {

@@ -251,6 +251,8 @@ export type OutMsg =
       dream?: DreamStatusInfo;
     }
   | ({ t: "state" } & Partial<RunState>)
+  /** The model list changed after `hello` (a late provider, a /model in the TUI). */
+  | { t: "models"; models: ModelInfo[] }
   | ({ t: "session"; reason: string } & SessionInfo)
   | { t: "entry"; entry: unknown }
   | { t: "msg_start"; id: string; role: string }
