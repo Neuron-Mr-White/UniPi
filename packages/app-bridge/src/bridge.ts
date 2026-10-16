@@ -1142,12 +1142,32 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
     if (!c) return fail("pi is gone.");
     const i = tuiQueue.findIndex((q) => q.id === id);
     if (i < 0) return fail("That queued message is gone.");
-    const [target] = tuiQueue.splice(i, 1);
+    // UNI-305: pi has no API to drop ONE item from its own live steer/followUp
+    // queue — the only way to edit it is to abort the whole run and re-send
+    // what's left (see the class comment above `tuiQueue`). That's fine
+    // between tool calls (there is nothing running to lose), but aborting
+    // WHILE a tool is executing kills it mid-flight — real, unsaved work —
+    // and if the removed item was the queue's only entry nothing is left to
+    // re-send: the run just dies instead of continuing. So this waits a
+    // short beat for the in-flight tool to reach its own end (the next safe
+    // boundary) before touching the queue; a tool still running past that
+    // is left alone and the edit is refused instead of destroying it.
+    if (tools.size > 0) {
+      const deadline = Date.now() + 4_000;
+      while (tools.size > 0 && Date.now() < deadline) await sleep(100);
+      if (tools.size > 0) return fail("That message was already handed to pi — it can't be taken back while a tool is running.");
+    }
+    // The wait above may have let pi drain this very item into a real turn
+    // (the message_start handler below removes it from tuiQueue once pi
+    // actually sends it) — re-check instead of operating on a stale index.
+    const liveIndex = tuiQueue.findIndex((q) => q.id === id);
+    if (liveIndex < 0) return fail("That message was already handed to pi — it can't be taken back now.");
+    const [target] = tuiQueue.splice(liveIndex, 1);
     const action = apply(target!) ?? undefined;
     // Keep the edited/kept target in its original slot (promote: first).
     const rest = tuiQueue.splice(0, tuiQueue.length);
     if (action === "promote") rest.unshift(target!);
-    else if (action !== "drop") rest.splice(i, 0, target!);
+    else if (action !== "drop") rest.splice(liveIndex, 0, target!);
     if (!c.isIdle()) {
       await abortKeepingEditor(c);
       const deadline = Date.now() + 10_000;

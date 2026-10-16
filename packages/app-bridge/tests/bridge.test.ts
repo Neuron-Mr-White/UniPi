@@ -22,6 +22,7 @@ function fakePi() {
   const commands = new Map<string, { handler: (args: string, ctx: any) => Promise<void> }>();
   const sent: Array<{ content: unknown; opts: any }> = [];
   let idle = true;
+  let abortCount = 0;
   let promptStartsRun = false;
   let thinking = "medium";
   let sessionName: string | undefined = "my session";
@@ -92,7 +93,10 @@ function fakePi() {
       getTree: () => tree,
     },
     isIdle: () => idle,
-    abort: () => (idle = true),
+    abort: () => {
+      abortCount++;
+      idle = true;
+    },
     getContextUsage: () => ({ tokens: 1000, contextWindow: 10000, percent: 10 }),
     compact: () => {},
   };
@@ -146,7 +150,22 @@ function fakePi() {
   const emit = async (name: string, event: any = {}) => {
     for (const h of handlers.get(name) ?? []) await h(event, ctx);
   };
-  return { pi, ctx, emit, sent, branch, tree, calls, sessionOps, lateModels, setIdle: (v: boolean) => (idle = v), setPromptStartsRun: (v: boolean) => (promptStartsRun = v) };
+  return {
+    pi,
+    ctx,
+    emit,
+    sent,
+    branch,
+    tree,
+    calls,
+    sessionOps,
+    lateModels,
+    setIdle: (v: boolean) => (idle = v),
+    setPromptStartsRun: (v: boolean) => (promptStartsRun = v),
+    get abortCount() {
+      return abortCount;
+    },
+  };
 }
 
 /** Fake SessionManager.list/listAll deps for `sessions{}` (the real bridge talks to disk). */
@@ -877,6 +896,40 @@ describe("app bridge over a unix socket", () => {
     c.send({ t: "abort", ref: "ta-clean" });
     await c.next((m) => m.t === "ack" && m.ref === "ta-clean");
     await c.next((m) => m.t === "restored");
+    f.setIdle(true);
+  });
+
+  it("UNI-305: removing a steered message while a tool is running is refused instead of aborting the run (no work is destroyed)", async () => {
+    f.setIdle(false);
+    await f.emit("input", { text: "steer F", source: "interactive", streamingBehavior: "steer" });
+    await c.next((m) => m.t === "input" && m.text === "steer F");
+    const q = await c.next((m) => m.t === "queue" && m.items.some((x: any) => x.text === "steer F"));
+    const idF = q.items.find((x: any) => x.text === "steer F")!.id as string;
+
+    // A tool is actively executing — pi's only way to edit the live queue is
+    // to abort the whole run, which would also kill this tool mid-flight.
+    await f.emit("tool_execution_start", { toolCallId: "tool-1", toolName: "bash", args: { command: "sleep 100" } });
+    await c.next((m) => m.t === "tool_start" && m.callId === "tool-1");
+
+    const beforeSent = f.sent.length;
+    const beforeAbortCount = f.abortCount;
+    c.send({ t: "queue_remove", id: idF, ref: "tr-tool" });
+    // The refusal waits a few seconds for the tool to end on its own before giving up.
+    const err = await c.next((m) => m.t === "error" && m.ref === "tr-tool", 6000);
+    assert.match(err.message, /can't be taken back while a tool is running/);
+    assert.equal(f.abortCount, beforeAbortCount, "no abort happened: the tool was never touched");
+    assert.equal(f.sent.length, beforeSent, "nothing was re-sent: the queue was left alone");
+    // The message is still queued (not silently dropped).
+    const stillQueued = bridge._debug.hello() as any;
+    assert.ok(stillQueued.queue.some((x: any) => x.id === idF));
+
+    // Once the tool ends, the same removal goes through normally.
+    await f.emit("tool_execution_end", { toolCallId: "tool-1", isError: false });
+    await c.next((m) => m.t === "tool_end" && m.callId === "tool-1");
+    f.setPromptStartsRun(true);
+    c.send({ t: "queue_remove", id: idF, ref: "tr-tool2" });
+    await c.next((m) => m.t === "ack" && m.ref === "tr-tool2");
+    f.setPromptStartsRun(false);
     f.setIdle(true);
   });
 
