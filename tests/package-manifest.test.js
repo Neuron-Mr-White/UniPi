@@ -88,10 +88,9 @@ describe("umbrella package pi manifest", () => {
   });
 
   it("every package's skills/ dir is in root pi.skills, or deliberately not (UNI-307: web-api's skill was dropped off this list, so /skill:web never appeared)", () => {
-    // dream/skills/craft-skill is internal: a resource dream resolves itself
-    // for its own sandboxed sub-process (packages/dream/src/runner.ts), never
-    // meant for the main session's skill catalog -- see its own README.
-    const deliberatelyExcluded = new Set(["dream"]);
+    // Every skill is user-facing: dream's craft-skill too (the user asked for
+    // it in the app, UNI-307); dream's own runner still loads it by path.
+    const deliberatelyExcluded = new Set();
     for (const dir of readdirSync("packages")) {
       if (deliberatelyExcluded.has(dir)) continue;
       if (!existsSync(`packages/${dir}/skills`)) continue;
