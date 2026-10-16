@@ -1548,6 +1548,21 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
         }
         return;
       }
+      case "reload": {
+        // UNI-308: `/reload` must work from the app, not fall through to a plain
+        // prompt. `ctx.reload()` (ExtensionCommandContext) is the same call the
+        // terminal's built-in `/reload` makes.
+        if (!(await ensureIdle(msg.force))) return write(sock, { t: "error", message: "pi is busy. Stop the current run first.", code: "busy", ref: msg.ref });
+        try {
+          await runCommandOp(async (cctx) => {
+            await cctx.reload();
+          });
+          ack();
+        } catch (error) {
+          fail(error instanceof Error ? error.message : String(error));
+        }
+        return;
+      }
       case "tree_go": {
         if (!(await ensureIdle(msg.force))) return write(sock, { t: "error", message: "pi is busy. Stop the current run first.", code: "busy", ref: msg.ref });
         try {

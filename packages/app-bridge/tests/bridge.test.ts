@@ -60,6 +60,7 @@ function fakePi() {
     fork: async (_entryId: string) => ({ cancelled: false }),
     navigateTree: async (_id: string, _opts?: unknown) => ({ cancelled: false }),
     switchSession: async (_path: string) => ({ cancelled: false }),
+    reload: async () => undefined,
   };
   const calls: Array<{ op: string; args: unknown[] }> = [];
   // Models a provider registers after the bridge's hello (pi-omniroute-bridge).
@@ -118,6 +119,10 @@ function fakePi() {
     switchSession: async (...args: unknown[]) => {
       calls.push({ op: "switchSession", args });
       return sessionOps.switchSession(args[0] as string);
+    },
+    reload: async (...args: unknown[]) => {
+      calls.push({ op: "reload", args });
+      return sessionOps.reload();
     },
   };
   const pi = {
@@ -475,6 +480,23 @@ describe("app bridge over a unix socket", () => {
     c.send({ t: "tree_go", id: "m1", summarize: true, ref: "g1" });
     await c.next((m) => m.t === "ack" && m.ref === "g1");
     assert.deepEqual(f.calls.at(-1), { op: "navigateTree", args: ["m1", { summarize: true }] });
+  });
+
+  it("UNI-308: reload runs through the hidden command context's ctx.reload(), same as the terminal's /reload", async () => {
+    c.send({ t: "reload", ref: "rl1" });
+    await c.next((m) => m.t === "ack" && m.ref === "rl1");
+    assert.deepEqual(f.calls.at(-1), { op: "reload", args: [] });
+
+    // While busy: a plain busy error, like the other session ops; force:true aborts+waits+reloads.
+    f.setIdle(false);
+    c.send({ t: "reload", ref: "rl2" });
+    const err = await c.next((m) => m.t === "error" && m.ref === "rl2");
+    assert.equal(err.code, "busy");
+
+    c.send({ t: "reload", force: true, ref: "rl3" });
+    await c.next((m) => m.t === "ack" && m.ref === "rl3");
+    assert.equal(f.calls.at(-1)!.op, "reload");
+    f.setIdle(true);
   });
 
   it("UNI-290: tree_go to a user message acks with its text (pi's editorText, else the entry's own text) for the composer; a non-user target adds nothing", async () => {
