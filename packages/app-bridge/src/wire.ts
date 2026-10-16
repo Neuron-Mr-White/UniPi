@@ -415,6 +415,10 @@ export type InMsg =
   | { t: "tree"; ref?: string }
   /** Navigate to a different point in the tree. `force`: abort the current run first. */
   | { t: "tree_go"; id: string; summarize?: boolean; force?: boolean; ref?: string }
+  /** UNI-308: `/reload` sent from the app — re-reads extensions, skills, prompts, context files
+   *  via `ctx.reload()` (the same thing the terminal's `/reload` built-in does). `force`: abort
+   *  the current run first, like the other session ops. */
+  | { t: "reload"; force?: boolean; ref?: string }
   /** Fetches the full bytes behind an image `mediaRef` the bridge sent in a
    *  `media`-omitted placeholder (see `phoneSafe`): replies with one or more
    *  `media_chunk` (≤ 700 KB of base64 per chunk) ending in `done:true`, or a
@@ -503,6 +507,7 @@ const IN_TYPES = new Set([
   "session_fork",
   "tree",
   "tree_go",
+  "reload",
   "session_rename",
   "media",
   "file_share",
@@ -596,6 +601,8 @@ export function parseIn(line: string): InMsg | { bad: string; ref?: string } | u
     case "tree_go":
       if (typeof m.id !== "string" || !m.id) return { bad: "tree_go.id must be a string", ref };
       return { t: "tree_go", id: m.id, summarize: m.summarize === true, force: m.force === true, ref };
+    case "reload":
+      return { t: "reload", force: m.force === true, ref };
     case "session_rename":
       if (typeof m.name !== "string") return { bad: "session_rename.name must be a string", ref };
       return { t: "session_rename", name: m.name.slice(0, 200), ref };

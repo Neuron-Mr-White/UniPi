@@ -50,6 +50,10 @@ describe("parseIn", () => {
     assert.deepEqual(parseIn('{"t":"session_rename","name":"new name"}'), { t: "session_rename", name: "new name", ref: undefined });
     assert.ok("bad" in (parseIn('{"t":"session_rename"}') as object));
   });
+  it("UNI-308: validates reload (force defaults to false)", () => {
+    assert.deepEqual(parseIn('{"t":"reload"}'), { t: "reload", force: false, ref: undefined });
+    assert.deepEqual(parseIn('{"t":"reload","force":true,"ref":"rl"}'), { t: "reload", force: true, ref: "rl" });
+  });
   it("validates btw / btw_list / queue_edit / queue_remove / queue_promote / queue_move", () => {
     assert.deepEqual(parseIn('{"t":"btw","question":"why?"}'), { t: "btw", question: "why?", ref: undefined });
     assert.ok("bad" in (parseIn('{"t":"btw","question":"  "}') as object));

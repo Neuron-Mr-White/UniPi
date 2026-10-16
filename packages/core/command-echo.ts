@@ -12,7 +12,7 @@
  * failures never block the command itself.
  */
 
-import type { ExtensionAPI, ExtensionCommandContext, RegisteredCommand } from "@earendil-works/pi-coding-agent";
+import { ExtensionRunner, type ExtensionAPI, type ExtensionCommandContext, type RegisteredCommand } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 
 export const COMMAND_ECHO_TYPE = "unipi-command-echo";
@@ -96,6 +96,48 @@ export function commandArgCompleters(): Map<string, ArgCompleter> {
   return (g[COMPLETERS_KEY] ??= new Map<string, ArgCompleter>());
 }
 
+/**
+ * UNI-304: `commandArgCompleters()` used to only ever hold the commands
+ * this module's own `withCommandEcho` wrapper saw (UniPi's commands). Other
+ * extensions' commands — pi-omniroute-bridge's `/usage`, a future `/skill:*`
+ * completer, anything not registered through `withCommandEcho` — never got
+ * an entry, so the app (which can only ask the bridge, never pi's live
+ * in-memory command registry) got nothing for them.
+ *
+ * `ExtensionRunner.resolveRegisteredCommands()` is where pi itself resolves
+ * every extension's registered command (with its real `getArgumentCompletions`,
+ * see `RegisteredCommand`) into the de-duplicated list the TUI's own
+ * autocomplete reads (`interactive-mode.js` calls `getRegisteredCommands()`,
+ * which calls this). It runs on every keystroke in a command's argument area,
+ * so it is already a safe, repeatedly-called hook. Patching it here — once,
+ * idempotently, on the shared class — is the least invasive way to see every
+ * extension's completer: no extension author needs to go through
+ * `withCommandEcho`, and pi needs no API change. UniPi's `unipi/index.ts`
+ * calls `withCommandEcho` (which calls this) before any other module loads,
+ * so the patch is in place before any extension — ours or a third party's —
+ * registers a single command.
+ */
+let runnerPatched = false;
+export function patchExtensionRunnerCommandCompleters(): void {
+  if (runnerPatched) return;
+  runnerPatched = true;
+  const proto = ExtensionRunner.prototype as unknown as {
+    resolveRegisteredCommands: () => Array<{ invocationName: string; name: string; getArgumentCompletions?: ArgCompleter }>;
+  };
+  const original = proto.resolveRegisteredCommands;
+  if (typeof original !== "function") return; // Unknown/future pi build: no-op rather than throw.
+  proto.resolveRegisteredCommands = function (this: unknown, ...args: unknown[]) {
+    const resolved = original.apply(this, args as []);
+    const map = commandArgCompleters();
+    for (const command of resolved) {
+      if (typeof command.getArgumentCompletions === "function") {
+        map.set(command.invocationName, command.getArgumentCompletions.bind(command));
+      }
+    }
+    return resolved;
+  } as typeof original;
+}
+
 /** Never echo `/name` (internal, programmatic commands). Call before or after registering. */
 export function silenceCommandEcho(name: string): void {
   silentSet().add(name.replace(/^\//, ""));
@@ -114,6 +156,10 @@ export function isSilentEcho(text: unknown): boolean {
 }
 
 export function withCommandEcho(pi: ExtensionAPI): ExtensionAPI {
+  // UNI-304: patch once, before any command is registered, so every
+  // extension's own completer (not just ones that happen to go through this
+  // wrapper) ends up in commandArgCompleters().
+  patchExtensionRunnerCommandCompleters();
   try {
     pi.registerEntryRenderer<{ text?: string }>(
       COMMAND_ECHO_TYPE,
