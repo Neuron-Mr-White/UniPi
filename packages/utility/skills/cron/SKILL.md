@@ -28,8 +28,8 @@ briefing someone who will never hear back from you:
   - **A note in the project** (if this looks like a coding/notes
     project): "add a kanboard task with the result" or similar, if
     the project uses one.
-  - **A notification**: if `skill:notify` (or whatever this PC's
-    notify setup is) is available, ask the prompt to send one.
+  - **A notification from the job itself**: add `--notify` (below). The
+    host sends one when the run finishes, so the prompt doesn't have to.
   - At minimum, the job's own summary (the last thing pi says) is kept
     and can be read back — mention that to the user if nothing richer
     applies.
@@ -64,6 +64,19 @@ briefing someone who will never hear back from you:
    <RFC3339>` instant also works, for anything the phrasing above
    doesn't cover. `--tz <IANA zone>` picks the zone (default: this
    PC's).
+
+   Optional flags worth offering:
+   - **`--notify ntfy,telegram,gotify --notify-on done,failed`**: the host
+     notifies on the user's own channels when a run ends. Without
+     `--notify` it uses the user's enabled channels, for failed runs only.
+     `--notify-on` takes `done`, `failed` and `skipped`.
+     `unipi-host cron test-notify <id>` sends one test message.
+   - **`--wake-here`**: when a run finishes, the host sends THIS session a
+     short message ("[cron] <name> finished: <status>. <summary>…"), so you
+     can follow up on the result. An idle session runs it at once, a busy
+     one queues it, and if the session is closed it is dropped. Use it when
+     the user wants you to act on the result ("check back when it's done").
+     `--wake-session <session file>` links another session instead.
 
 3. **Confirm the schedule back to the user**: `cron add` (and `cron
    edit`) print the resolved cron expression and the next 3 fire
