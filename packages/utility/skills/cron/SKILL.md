@@ -110,6 +110,12 @@ After setting a job up (or when the user asks how it's going), check
 worked. A `failed`/`timeout` run's reason explains what went wrong
 (bad cwd, pi not found, over its cost cap, the time limit).
 
+To dig into a run in depth, the user can open its saved session as a
+chat from the UniPi app (Cron → the job → the run → **Open session**),
+or from a terminal with `pi --session <session path from cron log>`.
+The app's Cron screen also edits a job's notifications and which chat
+it wakes.
+
 ## Rules
 
 - **Never create a job the user didn't ask for.** No "just in case"
