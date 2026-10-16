@@ -172,7 +172,7 @@ registerSettings({
             key: "notify_default_events",
             type: "multiselect",
             label: "Notify on",
-            options: ["ok", "failed", "timeout"],
+            options: ["done", "failed", "skipped"],
             plainOptions: true,
             emptyLabel: "none",
             description: "Which run outcomes are notified about by default.",
