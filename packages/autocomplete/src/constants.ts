@@ -77,6 +77,7 @@ export const COMMAND_REGISTRY: Record<string, string> = {
   "unipi:dream":      "utility",
   "unipi:answer":     "utility",
   "unipi:summarize":  "utility",
+  "unipi:cron":       "utility",
   "unipi:move":       "utility",
 
   // skill-registry
@@ -165,6 +166,7 @@ export const COMMAND_DESCRIPTIONS: Record<string, string> = {
   "unipi:doctor":     "Check UniPi's runtime: config, model cache, Decision Model, skills",
   "unipi:answer":     "Answer the last reply — fixed input under the scrollable reply, per question, or web form",
   "unipi:summarize":  "Summarize your last reply again (answer first, then findings, open items, questions). Add text to ask about it",
+  "unipi:cron":       "Scheduled pi runs on this PC — jobs, next runs, results; run, stop, enable, pause",
   "unipi:skills":     "Manage skills — on/off per project, listed or not, the skill vault",
   "unipi:move":       "Re-link sessions, trust, worktrees, boards and memories after moving this project",
 
