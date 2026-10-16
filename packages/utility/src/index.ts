@@ -40,6 +40,7 @@ import { installSimpleImageCollapse } from "./render/images.js";
 import { installHarnessRenderers, installHarnessUserRendering, withHarnessToolAnnotations } from "./render/harness.js";
 import { installHarnessProvenance } from "@pi-unipi/core";
 import { readUtilSettings } from "./settings.js";
+import { registerCronCommand } from "./cron/index.js";
 
 export { readUtilSettings } from "./settings.js";
 export { simpleWrapTool, simpleWrapped, installSimpleGroupEvents } from "./render/simple.js";
@@ -76,6 +77,7 @@ export default function (pi: ExtensionAPI) {
   registerSummarizeCommand(pi);
   registerAttachments(pi);
   registerImage(pi);
+  registerCronCommand(pi);
 
   // skill:browser is only usable while the PC's browser is on (UNI-300):
   // the host's browser.enabled, read from ~/.unipi/app-host/config.json
