@@ -70,7 +70,8 @@
       "packages/notify/skills",
       "packages/kanboard/skills",
       "packages/updater/skills",
-      "packages/subagents/skills"
+      "packages/subagents/skills",
+      "packages/web-api/skills"
     ]
   },
   "peerDependencies": {

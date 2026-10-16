@@ -87,6 +87,22 @@ describe("umbrella package pi manifest", () => {
     }
   });
 
+  it("every package's skills/ dir is in root pi.skills, or deliberately not (UNI-307: web-api's skill was dropped off this list, so /skill:web never appeared)", () => {
+    // dream/skills/craft-skill is internal: a resource dream resolves itself
+    // for its own sandboxed sub-process (packages/dream/src/runner.ts), never
+    // meant for the main session's skill catalog -- see its own README.
+    const deliberatelyExcluded = new Set(["dream"]);
+    for (const dir of readdirSync("packages")) {
+      if (deliberatelyExcluded.has(dir)) continue;
+      if (!existsSync(`packages/${dir}/skills`)) continue;
+      const mount = `packages/${dir}/skills`;
+      assert.ok(
+        pkg.pi.skills.includes(mount),
+        `packages/${dir}/skills exists but is missing from root pi.skills -- its SKILL.md(s) never register on an npm install`,
+      );
+    }
+  });
+
   it("ships every pi manifest resource and runtime bridge in npm pack output", () => {
     const output = execFileSync("npm", ["pack", "--dry-run", "--json"], {
       encoding: "utf8",
