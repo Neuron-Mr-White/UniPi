@@ -8,11 +8,12 @@
  * - Every hook body is try/catch: the bridge must never break a turn.
  */
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { SessionManager } from "@earendil-works/pi-coding-agent";
+import { AgentSession, SessionManager } from "@earendil-works/pi-coding-agent";
+import { createRequire } from "node:module";
 import { createServer, type Server, type Socket } from "node:net";
 import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join, relative, resolve as resolvePath } from "node:path";
+import { dirname, join, relative, resolve as resolvePath } from "node:path";
 import { DialogHub, wrapUi } from "./dialogs.js";
 import { ENTRIES_BUDGET, HELLO_ENTRIES_BUDGET, LINE_BUDGET, fitLine, historyPage, jsonBytes, phoneSafe, snapshotEntries, clipText, editedAway, wantedEntry, treeGoRestore, type TreeGoRestore } from "./snapshot.js";
 import { searchSession } from "./search.js";
@@ -151,7 +152,7 @@ interface TpsTrackerLike {
 const FOOTER_TPS_KEY = Symbol.for("unipi.footer.shared-tps");
 const getSharedTps = (): TpsTrackerLike | undefined => (globalThis as unknown as Record<symbol, unknown>)[FOOTER_TPS_KEY] as TpsTrackerLike | undefined;
 
-export const BRIDGE_VERSION = "1.0.0";
+export const BRIDGE_VERSION = "1.1.0";
 
 /** The hidden extension command the bridge uses to get a command-capable
  * context (newSession/fork/navigateTree/switchSession only exist there). */
@@ -250,7 +251,107 @@ export interface BridgeDeps {
 }
 const defaultDeps: BridgeDeps = { listSessions: SessionManager.list, listAllSessions: SessionManager.listAll as typeof SessionManager.listAll };
 
+/** UNI-320: pi's AgentSession.clearQueue() drains its own steer/followUp queue
+ * WITHOUT touching the running turn — the one primitive the extension API
+ * never exposed (the `input`/`sendUserMessage` surface can only ADD queue
+ * items, which is why editing/removing a `tui-*` row used to abort the run).
+ * The session instance isn't handed to extensions either, so it is captured
+ * by a one-time prototype patch (same approach as core's UNI-304 patch):
+ * methods pi itself always dispatches through `AgentSession.prototype` —
+ * `bindExtensions` on every session bind, `sendUserMessage`/`steer`/
+ * `followUp`/`abort` on activity — record the instance they are called on.
+ * A capture is only USED when it provably belongs to the context's session
+ * (same `sessionManager` object): a stale reference after a session switch
+ * would drain the wrong queue. Anything else — an older pi without
+ * clearQueue, a fake in tests — answers undefined and the bridge falls back
+ * to UNI-305's abort-and-resend. */
+type ClearQueueSession = {
+  clearQueue: () => { steering: string[]; followUp: string[] };
+  sessionManager?: unknown;
+};
+let capturedSession: ClearQueueSession | undefined;
+let sessionCapturePatched = false;
+/** Wrap the prototype methods pi itself always dispatches through
+ * `AgentSession.prototype` — `bindExtensions` on every session bind,
+ * `sendUserMessage`/`steer`/`followUp`/`abort` on activity — so the instance
+ * records itself. Capture-only: behavior is unchanged, and the __unipiCapture
+ * flag keeps repeated patching idempotent. Must run EAGERLY (at bridge
+ * creation), before the first prompt: a lazily-installed patch misses every
+ * dispatch that already happened, and the first queue edit would find nothing
+ * captured and fall back to abort-and-resend. */
+const patchAgentSessionPrototype = (Ctor: new () => unknown): void => {
+  const proto = Ctor.prototype as unknown as Record<string, ((...args: never[]) => unknown) | undefined>;
+  for (const name of ["bindExtensions", "sendUserMessage", "steer", "followUp", "abort"]) {
+    const current = proto[name];
+    if (typeof current !== "function" || (current as { __unipiCapture?: boolean }).__unipiCapture) continue;
+    const wrapped = function (this: unknown, ...args: never[]) {
+      capturedSession = this as ClearQueueSession;
+      return current!.apply(this, args);
+    } as ((...args: never[]) => unknown) & { __unipiCapture?: boolean };
+    wrapped.__unipiCapture = true;
+    proto[name] = wrapped;
+  }
+};
+/** The installed pi copies whose AgentSession could be the live one. There
+ * are SEVERAL in one process and which of them is real depends on how pi was
+ * started: pi's npm dist ships two separate module graphs (dist/bundle/* —
+ * what the CLI runs — and dist/index.js — the public barrel), and the
+ * extension's own static import is yet another copy: pi loads extensions
+ * through jiti, which evaluates the aliased pi module separately, so classes
+ * from the static import are never the classes the runtime uses. All
+ * candidates get the capture-only patch; the copies the runtime never
+ * instantiates simply never fire, and liveAgentSession() still validates the
+ * capture against this context's sessionManager before any use. */
+const patchAllRuntimeCopies = (): void => {
+  patchAgentSessionPrototype(AgentSession as new () => unknown);
+  const pkgRoot = join(dirname(dirname(process.execPath)), "lib", "node_modules", "@earendil-works", "pi-coding-agent");
+  const candidates = [
+    join(pkgRoot, "dist", "bundle", "index.js"),
+    join(pkgRoot, "dist", "index.js"),
+    process.argv[1]
+      ? resolvePath(dirname(process.argv[1]), "..", "lib", "node_modules", "@earendil-works", "pi-coding-agent", "dist", "bundle", "index.js")
+      : "",
+  ];
+  for (const index of candidates) {
+    if (!index) continue;
+    try {
+      const mod = createRequire(index)(index) as { AgentSession?: new () => unknown };
+      const Ctor = mod?.AgentSession;
+      if (Ctor && typeof (Ctor.prototype as { clearQueue?: unknown }).clearQueue === "function") patchAgentSessionPrototype(Ctor);
+    } catch {
+      // candidate not present in this install — the others cover it
+    }
+  }
+};
+/** Test hook: plant a stand-in session (the fake pi in tests has no real
+ * AgentSession to capture). Pass undefined to reset. */
+export function setCapturedAgentSessionForTests(session: unknown): void {
+  capturedSession = (session ?? undefined) as ClearQueueSession | undefined;
+  sessionCapturePatched = true;
+}
+/** The live AgentSession behind `c`, captured through the prototype patch —
+ * but only trusted when it provably belongs to THIS session (same
+ * sessionManager object as the extension context): a stale reference after a
+ * session switch would drain the wrong queue. Anything else — an older pi,
+ * a fake in tests — answers undefined and the bridge falls back to
+ * UNI-305's abort-and-resend. */
+const liveAgentSession = (c: ExtensionContext): ClearQueueSession | undefined => {
+  if (!sessionCapturePatched) {
+    patchAllRuntimeCopies();
+    sessionCapturePatched = true;
+  }
+  const session = capturedSession;
+  if (!session || typeof session.clearQueue !== "function") return undefined;
+  if (session.sessionManager !== (c as unknown as { sessionManager?: unknown }).sessionManager) return undefined;
+  return session;
+};
+
 export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
+  // UNI-320: install the AgentSession capture now, before any prompt can be
+  // sent — a lazily-installed patch misses every dispatch that already
+  // happened, and the first queue edit would fall back to abort-and-resend.
+  // (Session-bound validation happens later, in liveAgentSession().)
+  patchAllRuntimeCopies();
   let ctx: ExtensionContext | undefined;
   let server: Server | undefined;
   let socketPath: string | undefined;
@@ -259,10 +360,13 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
   /** pi's own queue (steer/follow-up from ANY source — TUI keybindings, the
    * harness, an extension's `pi.sendUserMessage({deliverAs})`), mirrored from
    * the `input` event's `streamingBehavior`. UNI-202: editable/removable/
-   * promotable from the phone too, even though the bridge can't reach pi's
-   * live queue array directly — an edit/remove/promote on one of these
-   * aborts the run (same effect as the TUI's Stop) and re-sends what's left
-   * via `pi.sendUserMessage`, same as the TUI's own dequeue-and-resend. */
+   * promotable from the phone too. UNI-305 did that by aborting the run and
+   * re-sending what's left; UNI-320 found a real primitive
+   * (`AgentSession.clearQueue()`, captured via a prototype patch — see
+   * `liveAgentSession`) that drains pi's queue WITHOUT touching the run, so
+   * an edit/remove/promote now keeps pi streaming and only falls back to
+   * abort-and-resend on older pi builds ("send now" always aborts: that's
+   * the point of the button). */
   const tuiQueue: Array<{ id: string; text: string; mode: "steer" | "followUp"; images?: Array<{ mime: string; data: string } | { mime: string; path: string }> }> = [];
   /** The bridge's own queue ("after it ends"): phone-only, editable/removable/reorderable/promotable,
    * delivered one at a time on `agent_end`. Survives phone reconnects (sent in `hello`), not a pi restart. */
@@ -1135,55 +1239,21 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
     }
   };
 
-  const editPiQueued = async (sock: Socket, id: string, ref: string | undefined, apply: (item: (typeof tuiQueue)[number]) => "drop" | "promote" | void) => {
+  const editPiQueued = async (sock: Socket, id: string, ref: string | undefined, apply: (item: (typeof tuiQueue)[number]) => "drop" | "promote" | void, promoteNow = false) => {
     const c = ctx;
     const ack = () => write(sock, { t: "ack", ref });
     const fail = (message: string) => write(sock, { t: "error", message, ref });
     if (!c) return fail("pi is gone.");
     const i = tuiQueue.findIndex((q) => q.id === id);
     if (i < 0) return fail("That queued message is gone.");
-    // UNI-305: pi has no API to drop ONE item from its own live steer/followUp
-    // queue — the only way to edit it is to abort the whole run and re-send
-    // what's left (see the class comment above `tuiQueue`). That's fine
-    // between tool calls (there is nothing running to lose), but aborting
-    // WHILE a tool is executing kills it mid-flight — real, unsaved work —
-    // and if the removed item was the queue's only entry nothing is left to
-    // re-send: the run just dies instead of continuing. So this waits a
-    // short beat for the in-flight tool to reach its own end (the next safe
-    // boundary) before touching the queue; a tool still running past that
-    // is left alone and the edit is refused instead of destroying it.
-    if (tools.size > 0) {
-      const deadline = Date.now() + 4_000;
-      while (tools.size > 0 && Date.now() < deadline) await sleep(100);
-      if (tools.size > 0) return fail("That message was already handed to pi — it can't be taken back while a tool is running.");
-    }
-    // The wait above may have let pi drain this very item into a real turn
-    // (the message_start handler below removes it from tuiQueue once pi
-    // actually sends it) — re-check instead of operating on a stale index.
-    const liveIndex = tuiQueue.findIndex((q) => q.id === id);
-    if (liveIndex < 0) return fail("That message was already handed to pi — it can't be taken back now.");
-    const [target] = tuiQueue.splice(liveIndex, 1);
-    const action = apply(target!) ?? undefined;
-    // Keep the edited/kept target in its original slot (promote: first).
-    const rest = tuiQueue.splice(0, tuiQueue.length);
-    if (action === "promote") rest.unshift(target!);
-    else if (action !== "drop") rest.splice(liveIndex, 0, target!);
-    if (!c.isIdle()) {
-      await abortKeepingEditor(c);
-      const deadline = Date.now() + 10_000;
-      while (!c.isIdle() && Date.now() < deadline) await sleep(50);
-      // The abort was only the means to edit pi's queue: the re-sent items
-      // start the next run (agent_start releases the hold); if nothing is
-      // re-sent the hold lapses and the "after" queue delivers normally.
-      holdUntilNextRun();
-    }
-    send({ t: "queue", items: queueView() });
+    const target = tuiQueue[i];
     const contentOf = (q: (typeof tuiQueue)[number]) => (q.images?.length ? [{ type: "text" as const, text: q.text }, ...q.images.map(imageContent)] : q.text);
-    try {
-      // pi is idle now, so a deliverAs message would be rejected ("Specify
-      // streamingBehavior"/"already processing"). The first item starts a
-      // fresh run; wait until pi is streaming, then queue the rest in pi's
-      // own order (steer drains before followUp).
+    /** Re-send survivors once pi's real queue already matches: the first item
+     * starts a fresh run when idle (a deliverAs while idle would be rejected
+     * with "Specify streamingBehavior"), then the rest in pi's own order
+     * (steer drains before followUp). */
+    const resend = async (rest: Array<(typeof tuiQueue)[number]>) => {
+      send({ t: "queue", items: queueView() });
       const order = [...rest].sort((a, b) => (a === rest[0] ? -1 : b === rest[0] ? 1 : a.mode === b.mode ? 0 : a.mode === "steer" ? -1 : 1));
       for (const q of order) {
         if (c.isIdle()) {
@@ -1194,6 +1264,103 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
           pi.sendUserMessage(contentOf(q), { deliverAs: q.mode, expandPromptTemplates: true } as never);
         }
       }
+    };
+    // UNI-320: preferred path — drain pi's own queue with clearQueue() (which
+    // leaves the running turn alone), drop/edit/promote the target in the
+    // drained truth, and re-queue the survivors. No abort, no idle-wait, no
+    // hold: a busy pi keeps streaming mid-sentence, and deleting the queue's
+    // ONLY entry no longer kills the run (the UNI-305 hole where nothing was
+    // left to re-send). "Send now" (promoteNow) still aborts on purpose —
+    // stopping the run is what that button says it does.
+    const session = promoteNow ? undefined : liveAgentSession(c);
+    if (session) {
+      tuiQueue.splice(i, 1);
+      // pi's queue holds plain expanded texts; match the target by its
+      // ORIGINAL text (apply() may edit it) so edit keeps working. Images
+      // live only in the mirror, so keep a lookup before emptying it.
+      const original = { text: target!.text, mode: target!.mode };
+      const mirrorImages = new Map(tuiQueue.filter((q) => q.images?.length).map((q) => [`${q.mode}\u0000${q.text}`, q.images]));
+      const imageOf = (text: string, mode: "steer" | "followUp") =>
+        (text === original.text && mode === original.mode ? target!.images : mirrorImages.get(`${mode}\u0000${text}`));
+      const action = apply(target!) ?? undefined;
+      const drained = session.clearQueue();
+      // The mirror must match pi's now-drained queue: empty it (the re-sent
+      // survivors echo back through `input` and re-mirror themselves).
+      tuiQueue.length = 0;
+      const steers = [...drained.steering];
+      const follows = [...drained.followUp];
+      const pool = original.mode === "steer" ? steers : follows;
+      const at = pool.indexOf(original.text);
+      if (at < 0) {
+        // pi delivered it between the phone's tap and now: put everything
+        // back untouched and refuse, like the "already handed to pi" case.
+        try {
+          await resend([
+            ...steers.map((text) => ({ id: "", text, mode: "steer" as const, images: imageOf(text, "steer") })),
+            ...follows.map((text) => ({ id: "", text, mode: "followUp" as const, images: imageOf(text, "followUp") })),
+          ]);
+        } catch {
+          // re-queue best-effort; the refusal still tells the user the truth
+        }
+        return fail("That message was already handed to pi — it can't be taken back now.");
+      }
+      pool.splice(at, 1);
+      const kept = action === "drop" ? undefined : target!;
+      const rest: Array<(typeof tuiQueue)[number]> = [
+        ...steers.map((text) => ({ id: "", text, mode: "steer" as const, images: imageOf(text, "steer") })),
+        ...follows.map((text) => ({ id: "", text, mode: "followUp" as const, images: imageOf(text, "followUp") })),
+      ];
+      if (kept) {
+        if (action === "promote") rest.unshift(kept);
+        else rest.splice(original.mode === "steer" ? Math.min(at, steers.length) : steers.length + Math.min(at, follows.length), 0, kept);
+      }
+      try {
+        await resend(rest);
+        ack();
+      } catch (error) {
+        fail(error instanceof Error ? error.message : String(error));
+      }
+      return;
+    }
+    // Fallback (older pi, or "send now"): UNI-305's abort-and-resend. pi has
+    // no API to drop ONE item from its own live steer/followUp queue there —
+    // the only way to edit it is to abort the whole run and re-send what's
+    // left (see the class comment above `tuiQueue`). That's fine between tool
+    // calls (there is nothing running to lose), but aborting WHILE a tool is
+    // executing kills it mid-flight — real, unsaved work — and if the removed
+    // item was the queue's only entry nothing is left to re-send: the run
+    // just dies instead of continuing. So this waits a short beat for the
+    // in-flight tool to reach its own end (the next safe boundary) before
+    // touching the queue; a tool still running past that is left alone and
+    // the edit is refused instead of destroying it.
+    if (tools.size > 0) {
+      const deadline = Date.now() + 4_000;
+      while (tools.size > 0 && Date.now() < deadline) await sleep(100);
+      if (tools.size > 0) return fail("That message was already handed to pi — it can't be taken back while a tool is running.");
+    }
+    // The wait above may have let pi drain this very item into a real turn
+    // (the message_start handler below removes it from tuiQueue once pi
+    // actually sends it) — re-check instead of operating on a stale index.
+    const liveIndex = tuiQueue.findIndex((q) => q.id === id);
+    if (liveIndex < 0) return fail("That message was already handed to pi — it can't be taken back now.");
+    const [liveTarget] = tuiQueue.splice(liveIndex, 1);
+    const action = apply(liveTarget!) ?? undefined;
+    // Keep the edited/kept target in its original slot (promote: first).
+    const rest = tuiQueue.splice(0, tuiQueue.length);
+    if (action === "promote") rest.unshift(liveTarget!);
+    else if (action !== "drop") rest.splice(liveIndex, 0, liveTarget!);
+    if (!c.isIdle()) {
+      await abortKeepingEditor(c);
+
+      const deadline = Date.now() + 10_000;
+      while (!c.isIdle() && Date.now() < deadline) await sleep(50);
+      // The abort was only the means to edit pi's queue: the re-sent items
+      // start the next run (agent_start releases the hold); if nothing is
+      // re-sent the hold lapses and the "after" queue delivers normally.
+      holdUntilNextRun();
+    }
+    try {
+      await resend(rest);
       ack();
     } catch (error) {
       fail(error instanceof Error ? error.message : String(error));
@@ -1311,7 +1478,9 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
         return;
       }
       case "queue_promote": {
-        if (msg.id.startsWith("tui-")) return void (await editPiQueued(sock, msg.id, msg.ref, () => "promote"));
+        // "now" means stop the run on purpose — keep it on the abort path
+        // even when clearQueue surgery is available.
+        if (msg.id.startsWith("tui-")) return void (await editPiQueued(sock, msg.id, msg.ref, () => "promote", msg.to === "now"));
         const i = bridgeQueue.findIndex((q) => q.id === msg.id);
         if (i < 0) return fail("That queued message is gone.");
         const [item] = bridgeQueue.splice(i, 1);

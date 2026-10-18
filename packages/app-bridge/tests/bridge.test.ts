@@ -13,7 +13,7 @@ process.env.UNIPI_BRIDGE_DIR = dir;
 process.env.UNIPI_BRIDGE_PENDING_GRACE_MS = "150";
 process.env.UNIPI_BRIDGE_HOLD_MS = "100";
 process.env.UNIPI_BRIDGE_INFLIGHT_MS = "400";
-const { createBridge, SESSION_COMMAND } = await import("../src/bridge.js");
+const { createBridge, SESSION_COMMAND, setCapturedAgentSessionForTests } = await import("../src/bridge.js");
 
 type Handler = (event: any, ctx: any) => unknown;
 
@@ -953,6 +953,147 @@ describe("app bridge over a unix socket", () => {
     await c.next((m) => m.t === "ack" && m.ref === "tr-tool2");
     f.setPromptStartsRun(false);
     f.setIdle(true);
+  });
+
+  // UNI-320: when the bridge can capture pi's AgentSession (same
+  // sessionManager as the extension context), edit/remove/promote-go through
+  // clearQueue() — pi keeps streaming; no abort, no idle-wait, no refusal.
+  it("UNI-320: removing the queue's ONLY tui item mid-run drains pi's queue without aborting — deleting no longer stops the chat", async () => {
+    f.setIdle(false);
+    await f.emit("input", { text: "solo steer", source: "interactive", streamingBehavior: "steer" });
+    await c.next((m) => m.t === "input" && m.text === "solo steer");
+    const q = await c.next((m) => m.t === "queue" && m.items.some((x: any) => x.text === "solo steer"));
+    const id = q.items.find((x: any) => x.text === "solo steer")!.id as string;
+    let cleared = 0;
+    setCapturedAgentSessionForTests({ sessionManager: f.ctx.sessionManager, clearQueue: () => (cleared++, { steering: ["solo steer"], followUp: [] }) });
+    try {
+      const beforeAbort = f.abortCount;
+      const beforeSent = f.sent.length;
+      c.send({ t: "queue_remove", id, ref: "u320a" });
+      await c.next((m) => m.t === "ack" && m.ref === "u320a");
+      assert.equal(f.abortCount, beforeAbort, "the run was never aborted");
+      assert.equal(f.sent.length, beforeSent, "nothing had to be re-sent");
+      assert.equal(cleared, 1, "pi's own queue was drained once");
+      const after = bridge._debug.hello() as any;
+      assert.deepEqual(after.queue, [], "the row is gone");
+    } finally {
+      setCapturedAgentSessionForTests(undefined);
+      c.msgs.length = 0;
+    }
+  });
+
+  it("UNI-320: removing one of several tui items re-queues the survivors via deliverAs without aborting the run", async () => {
+    f.setIdle(false);
+    for (const [text, mode] of [["s1", "steer"], ["s2", "steer"], ["f1", "followUp"]] as const) {
+      await f.emit("input", { text, source: "interactive", streamingBehavior: mode });
+      await c.next((m) => m.t === "input" && m.text === text);
+    }
+    const q = await c.next((m) => m.t === "queue" && m.items.some((x: any) => x.text === "s1"));
+    const idS1 = q.items.find((x: any) => x.text === "s1")!.id as string;
+    setCapturedAgentSessionForTests({ sessionManager: f.ctx.sessionManager, clearQueue: () => ({ steering: ["s1", "s2"], followUp: ["f1"] }) });
+    try {
+      const beforeAbort = f.abortCount;
+      const beforeSent = f.sent.length;
+      c.send({ t: "queue_remove", id: idS1, ref: "u320b" });
+      await c.next((m) => m.t === "ack" && m.ref === "u320b");
+      assert.equal(f.abortCount, beforeAbort, "no abort: the run keeps streaming");
+      const resent = f.sent.slice(beforeSent).map((x: any) => ({ text: typeof x.content === "string" ? x.content : x.content[0]?.text, mode: x.opts?.deliverAs }));
+      assert.deepEqual(resent, [{ text: "s2", mode: "steer" }, { text: "f1", mode: "followUp" }], "survivors keep their modes and pi's steer-before-followUp order");
+    } finally {
+      setCapturedAgentSessionForTests(undefined);
+      c.msgs.length = 0;
+    }
+  });
+
+  it("UNI-320: editing a tui item goes through clearQueue() too — no abort, and the edited text takes the item's slot", async () => {
+    f.setIdle(false);
+    await f.emit("input", { text: "e1", source: "interactive", streamingBehavior: "steer" });
+    await c.next((m) => m.t === "input" && m.text === "e1");
+    await f.emit("input", { text: "e2", source: "interactive", streamingBehavior: "steer" });
+    await c.next((m) => m.t === "input" && m.text === "e2");
+    const q = await c.next((m) => m.t === "queue" && m.items.some((x: any) => x.text === "e2"));
+    const idE1 = q.items.find((x: any) => x.text === "e1")!.id as string;
+    setCapturedAgentSessionForTests({ sessionManager: f.ctx.sessionManager, clearQueue: () => ({ steering: ["e1", "e2"], followUp: [] }) });
+    try {
+      const beforeAbort = f.abortCount;
+      const beforeSent = f.sent.length;
+      c.send({ t: "queue_edit", id: idE1, text: "e1-edited", ref: "u320c" });
+      await c.next((m) => m.t === "ack" && m.ref === "u320c");
+      assert.equal(f.abortCount, beforeAbort, "no abort");
+      const resent = f.sent.slice(beforeSent).map((x: any) => (typeof x.content === "string" ? x.content : x.content[0]?.text));
+      assert.deepEqual(resent, ["e1-edited", "e2"], "the edited item is back in its original slot");
+    } finally {
+      setCapturedAgentSessionForTests(undefined);
+      c.msgs.length = 0;
+    }
+  });
+
+  it("UNI-320: mid-tool removal goes straight through — clearQueue() cannot destroy running work, so no 4 s wait and no refusal", async () => {
+    f.setIdle(false);
+    await f.emit("input", { text: "midtool", source: "interactive", streamingBehavior: "steer" });
+    await c.next((m) => m.t === "input" && m.text === "midtool");
+    const q = await c.next((m) => m.t === "queue" && m.items.some((x: any) => x.text === "midtool"));
+    const id = q.items.find((x: any) => x.text === "midtool")!.id as string;
+    await f.emit("tool_execution_start", { toolCallId: "tool-9", toolName: "bash", args: {} });
+    await c.next((m) => m.t === "tool_start" && m.callId === "tool-9");
+    setCapturedAgentSessionForTests({ sessionManager: f.ctx.sessionManager, clearQueue: () => ({ steering: ["midtool"], followUp: [] }) });
+    try {
+      const beforeAbort = f.abortCount;
+      c.send({ t: "queue_remove", id, ref: "u320d" });
+      const ack = await c.next((m) => m.t === "ack" && m.ref === "u320d", 2000);
+      assert.ok(ack, "no 4 s tool-wait: the ack arrived fast");
+      assert.equal(f.abortCount, beforeAbort, "and without an abort");
+    } finally {
+      setCapturedAgentSessionForTests(undefined);
+      await f.emit("tool_execution_end", { toolCallId: "tool-9", isError: false });
+      await c.next((m) => m.t === "tool_end" && m.callId === "tool-9");
+      f.setIdle(true);
+      c.msgs.length = 0;
+    }
+  });
+
+  it("UNI-320: a capture from another session (sessionManager mismatch) is ignored — the UNI-305 abort-and-resend fallback still applies", async () => {
+    f.setIdle(false);
+    await f.emit("input", { text: "stale", source: "interactive", streamingBehavior: "steer" });
+    await c.next((m) => m.t === "input" && m.text === "stale");
+    const q = await c.next((m) => m.t === "queue" && m.items.some((x: any) => x.text === "stale"));
+    const id = q.items.find((x: any) => x.text === "stale")!.id as string;
+    let cleared = 0;
+    setCapturedAgentSessionForTests({ sessionManager: {}, clearQueue: () => (cleared++, { steering: ["stale"], followUp: [] }) });
+    try {
+      const beforeAbort = f.abortCount;
+      c.send({ t: "queue_remove", id, ref: "u320e" });
+      await c.next((m) => m.t === "ack" && m.ref === "u320e");
+      assert.equal(cleared, 0, "the foreign session's queue was never drained");
+      assert.equal(f.abortCount, beforeAbort + 1, "fell back to the abort path");
+    } finally {
+      setCapturedAgentSessionForTests(undefined);
+      f.setIdle(true);
+      c.msgs.length = 0;
+    }
+  });
+
+  it("UNI-320: if pi already delivered the target, the surgery path re-queues the rest untouched and refuses", async () => {
+    f.setIdle(false);
+    await f.emit("input", { text: "gone", source: "interactive", streamingBehavior: "steer" });
+    await c.next((m) => m.t === "input" && m.text === "gone");
+    const q = await c.next((m) => m.t === "queue" && m.items.some((x: any) => x.text === "gone"));
+    const id = q.items.find((x: any) => x.text === "gone")!.id as string;
+    setCapturedAgentSessionForTests({ sessionManager: f.ctx.sessionManager, clearQueue: () => ({ steering: ["kept"], followUp: [] }) });
+    try {
+      const beforeAbort = f.abortCount;
+      const beforeSent = f.sent.length;
+      c.send({ t: "queue_remove", id, ref: "u320f" });
+      const err = await c.next((m) => m.t === "error" && m.ref === "u320f");
+      assert.match(err.message, /already handed to pi/);
+      assert.equal(f.abortCount, beforeAbort, "no abort even on the refusal path");
+      const resent = f.sent.slice(beforeSent).map((x: any) => (typeof x.content === "string" ? x.content : x.content[0]?.text));
+      assert.deepEqual(resent, ["kept"], "the surviving item was put back");
+    } finally {
+      setCapturedAgentSessionForTests(undefined);
+      f.setIdle(true);
+      c.msgs.length = 0;
+    }
   });
 
   it("UNI-202/211: abort pulls pi's own queued messages back (matching the TUI's own Stop) and the phone gets `restored`; the bridge's own 'after' queue is untouched", async () => {
