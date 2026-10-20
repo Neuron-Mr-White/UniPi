@@ -198,6 +198,21 @@ export function bridgeDir(): string {
   return process.env.UNIPI_BRIDGE_DIR || join(homedir(), ".unipi", "bridge");
 }
 
+/** The path/pipe name the bridge listens on for a given pid. On win32 this
+ * is a named pipe (`\\\\.\\pipe\\unipi-bridge-<pid>`) so unipi-host (Windows)
+ * can connect; everywhere else it's a unix socket file inside `dir`.
+ * `platform` is injectable so this stays unit-testable on Linux. */
+export function bridgeSocketPath(dir: string, pid: number, platform: NodeJS.Platform = process.platform): string {
+  if (platform === "win32") return "\\\\.\\pipe\\unipi-bridge-" + pid;
+  return join(dir, `${pid}.sock`);
+}
+
+/** Whether `path` is a Windows named pipe (as produced by `bridgeSocketPath`
+ * on win32), rather than a unix socket file path. */
+export function isBridgePipe(path: string): boolean {
+  return path.startsWith("\\\\.\\pipe\\");
+}
+
 function alive(pid: number): boolean {
   try {
     process.kill(pid, 0);
@@ -1935,8 +1950,8 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
       return;
     }
     sweepDead(dir);
-    socketPath = join(dir, `${process.pid}.sock`);
-    rmSync(socketPath, { force: true });
+    socketPath = bridgeSocketPath(dir, process.pid);
+    if (!isBridgePipe(socketPath)) rmSync(socketPath, { force: true });
     const srv = createServer((sock) => {
       clients.add(sock);
       // A phone connecting has now seen the state (it's in `hello`): the
@@ -1977,10 +1992,12 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
       // Socket trouble (dir removed…) never matters to pi.
     });
     srv.listen(socketPath, () => {
-      try {
-        chmodSync(socketPath!, 0o600);
-      } catch {
-        // ignore
+      if (!isBridgePipe(socketPath!)) {
+        try {
+          chmodSync(socketPath!, 0o600);
+        } catch {
+          // ignore
+        }
       }
       writeRecord();
     });
@@ -2019,7 +2036,7 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
     server = undefined;
     const dir = bridgeDir();
     rmSync(join(dir, `${process.pid}.json`), { force: true });
-    if (socketPath) rmSync(socketPath, { force: true });
+    if (socketPath && !isBridgePipe(socketPath)) rmSync(socketPath, { force: true });
     socketPath = undefined;
   };
 

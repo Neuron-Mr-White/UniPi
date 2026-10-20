@@ -6,7 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.0.0-alpha.44] — 2026-10-19
+
 ### Fixed
+- Windows: the app can reach pi chats on a Windows PC. On Windows the bridge now listens on a named pipe (`\\.\pipe\unipi-bridge-<pid>`) instead of a Unix socket file, which Node can't create there (EACCES); Linux and macOS are unchanged. Needs UniPi host 0.5.2 on the Windows PC.
 - Deleting a queued message from the app no longer stops the run. Editing, removing or steer-promoting one of pi's own queued messages used to abort the whole run and re-send what was left (UNI-305) — which meant deleting the queue's only entry killed the chat outright. The bridge now reaches pi's `AgentSession.clearQueue()` (captured with a one-time prototype patch, used only when it provably belongs to the session being edited) to drain and re-queue around the change while pi keeps streaming; the abort-and-resend path remains only as a fallback for older pi builds, and "Send now" still stops the run on purpose. (UNI-320)
 
 ## [3.0.0-alpha.43] — 2026-10-16

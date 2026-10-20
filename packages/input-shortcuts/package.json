@@ -1,6 +1,6 @@
 {
   "name": "@pi-unipi/input-shortcuts",
-  "version": "3.0.0-alpha.43",
+  "version": "3.0.0-alpha.44",
   "description": "Keyboard shortcuts for stash/restore, undo/redo, clipboard, and thinking toggle — chord-based overlay system",
   "type": "module",
   "main": "src/index.ts",
@@ -33,7 +33,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@pi-unipi/core": "3.0.0-alpha.43"
+    "@pi-unipi/core": "3.0.0-alpha.44"
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "^0.87.1",
