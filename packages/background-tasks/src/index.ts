@@ -14,6 +14,7 @@ import {
   isChildProcess,
   type KitTheme,
   openWorkTray,
+  recordChildUsage,
   registerWaitSource,
   registerWorkTrayTab,
   setBashBackgroundAdopter,
@@ -55,6 +56,7 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
   }
 
   const seenTaskIds = new Set<string>();
+  const costRecorded = new Set<string>();
   let currentCtx: ExtensionContext | undefined;
 
   const registry = new BackgroundTaskRegistry({
@@ -68,6 +70,16 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
       pi.sendMessage(message as never, options as never);
     },
     publishTerminal: (task) => {
+      // An agent task's spend belongs in the lead session's cost. Its own pi
+      // session already lives under the global sessions dir, so it is not
+      // standalone for cross-session stats.
+      if (task.isAgent && task.tokenUsage && !costRecorded.has(task.id)) {
+        costRecorded.add(task.id);
+        const u = task.tokenUsage;
+        recordChildUsage((type, data) => pi.appendEntry(type, data), { source: "bg-task", id: task.id, model: task.model, standalone: false }, {
+          input: u.input, output: u.output, cacheRead: u.cacheRead, cacheWrite: u.cacheWrite, cost: u.costTotal,
+        });
+      }
       eventService.publishTerminal(task);
     },
   });

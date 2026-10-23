@@ -19,7 +19,7 @@ import { Type } from "typebox";
 import { matchesKey, truncateToWidth } from "@earendil-works/pi-tui";
 import { renderDelegatedStep, type DelegatedStep } from "@pi-unipi/utility/src/render/delegated.js";
 import {
-  MODULES, UNIPI_EVENTS, bus, getPackageVersion, getSettings, isChildProcess, openWorkTray, registerSettings, registerWaitSource, registerWorkTrayTab, subscribeTick,
+  MODULES, UNIPI_EVENTS, bus, getPackageVersion, getSettings, isChildProcess, openWorkTray, recordChildUsage, registerSettings, registerWaitSource, registerWorkTrayTab, subscribeTick,
 } from "@pi-unipi/core";
 import {
   ensureReadSubagentTool, registerSubagentReader, setReadSubagentDemand,
@@ -500,6 +500,7 @@ export default function subagents(pi: ExtensionAPI, deps?: { manager?: SubagentM
       resume: resumeId,
       maxConcurrent: config.maxConcurrent,
       onStep: (record, step) => appendSubagentStep((type, data) => pi.appendEntry(type, data), record, step),
+      onUsage: (record, delta) => recordChildUsage((type, data) => pi.appendEntry(type, data), { source: "subagent", id: record.id, model: record.model }, delta),
     });
     if ("error" in start) return textResult(start.error, { owner: "subagents", status: "failed", title: params.title, error: start.error }, true);
     const { run } = start;
@@ -664,6 +665,7 @@ export default function subagents(pi: ExtensionAPI, deps?: { manager?: SubagentM
         resume: request.resume,
         maxConcurrent: config.maxConcurrent,
         onStep: (record, step) => appendSubagentStep((type, data) => pi.appendEntry(type, data), record, step),
+        onUsage: (record, delta) => recordChildUsage((type, data) => pi.appendEntry(type, data), { source: "subagent", id: record.id, model: record.model }, delta),
       });
       if ("error" in start) return { error: start.error, retryable: /Maximum \d+ concurrent|still running/.test(start.error) };
       const { run } = start;

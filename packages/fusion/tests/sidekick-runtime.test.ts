@@ -76,6 +76,38 @@ test("runtime completes a handoff and sums usage", async () => {
   runtime.kill();
 });
 
+test("onUsage fires one delta per child assistant message (lead cost accounting)", async () => {
+  const child = fakeChild();
+  commands(child);
+  const deltas: Array<Record<string, number>> = [];
+  const runtime = new SidekickRuntime({
+    cwd: "/tmp",
+    model: "b/glm",
+    thinking: "low",
+    sessionFile: "/tmp/sidekick.jsonl",
+    systemPrompt: "sidekick",
+    command: { command: "fake-pi", args: [] },
+    spawn: (() => child) as never,
+    onUsage: (delta) => deltas.push({ ...delta }),
+  });
+  const handoff = runtime.handoff("do work");
+  emit(child, { type: "response", command: "prompt", success: true });
+  emit(child, { type: "message_end", message: { role: "assistant", usage: { input: 10, output: 4, cacheRead: 2, cacheWrite: 1, cost: { total: 0.5 } } } });
+  emit(child, { type: "message_end", message: { role: "assistant", usage: { input: 20, output: 6, cacheRead: 0, cacheWrite: 0, cost: { total: 0.25 } } } });
+  emit(child, { type: "agent_settled" });
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  emit(child, { type: "response", command: "get_last_assistant_text", success: true, data: { text: "finished" } });
+  const report = await handoff.done;
+  assert.deepEqual(deltas, [
+    { input: 10, output: 4, cacheRead: 2, cacheWrite: 1, cost: 0.5 },
+    { input: 20, output: 6, cacheRead: 0, cacheWrite: 0, cost: 0.25 },
+  ]);
+  // Deltas don't double the runtime's own totals.
+  assert.deepEqual(report.usage, { input: 30, output: 10, cacheRead: 2, cacheWrite: 1, cost: 0.75 });
+  assert.deepEqual(runtime.usage, { input: 30, output: 10, cacheRead: 2, cacheWrite: 1, cost: 0.75 });
+  runtime.kill();
+});
+
 test("bg_run keeps the handoff open across agent_settled", async () => {
   const child = fakeChild();
   const sent = commands(child);

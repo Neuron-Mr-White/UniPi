@@ -21,6 +21,7 @@ export * from "./src/work/index.js";
 export * from "./src/work/tray.js";
 export * from "./src/work/pane-kit.js";
 export * from "./src/evidence.js";
+export * from "./src/child-usage.js";
 
 // v3 workspace identity + state layout (marker-file id, per-workspace roots)
 export * from "./src/workspace/identity.js";

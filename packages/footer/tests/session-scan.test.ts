@@ -173,3 +173,28 @@ describe("SessionScanner (incremental scan)", () => {
     assert.equal(tpsTracker.getToolMs(), 4_000);
   });
 });
+
+describe("SessionScanner child-agent cost", () => {
+  beforeEach(() => {
+    tpsTracker.reset();
+  });
+
+  it("adds unipi-child-usage cost to the session cost, not to tokens", () => {
+    const at = (m: number) => new Date(2026, 0, 1, 10, 0, m);
+    const child = (cost: number) => ({
+      type: "custom",
+      customType: "unipi-child-usage",
+      data: { v: 1, source: "subagent", id: "a1", standalone: true, input: 5000, output: 200, cacheRead: 0, cacheWrite: 0, cost },
+    });
+    const scanner = new SessionScanner();
+    scanner.scan([userMsg("go"), assistantMsg("dispatch", 10, at(1)), child(0.25), child(0.5)]);
+    const s = scanner.snapshot;
+    assert.ok(Math.abs(s.cost - 0.76) < 1e-9, `cost ${s.cost}`);
+    assert.ok(Math.abs(s.childCost - 0.75) < 1e-9);
+    assert.equal(s.input, 100);
+    assert.equal(s.assistantCount, 1);
+    // Incremental: a later child entry is picked up on the next scan.
+    scanner.scan([userMsg("go"), assistantMsg("dispatch", 10, at(1)), child(0.25), child(0.5), child(1)]);
+    assert.ok(Math.abs(scanner.snapshot.cost - 1.76) < 1e-9);
+  });
+});

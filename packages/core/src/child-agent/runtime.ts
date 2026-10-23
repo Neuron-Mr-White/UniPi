@@ -45,6 +45,10 @@ export interface SidekickSpawnConfig {
    *  is not the final report). The final report text is never emitted — the
    *  lead reports it itself. */
   onStep?: (step: SidekickStep) => void;
+  /** Fired once per completed child assistant message with that message's
+   *  usage delta — owners record it into the lead session so the lead's cost
+   *  includes child spend (see child-usage.ts). */
+  onUsage?: (delta: SidekickUsage) => void;
   settleGraceMs?: number;
 }
 
@@ -442,13 +446,15 @@ export class ChildAgentRuntime {
         const usage = msg.usage as Record<string, unknown> | undefined;
         if (usage) {
           const cost = usage.cost as Record<string, unknown> | undefined;
-          this.addUsage(this.pending.usage, {
+          const delta = {
             input: usage.input,
             output: usage.output,
             cacheRead: usage.cacheRead,
             cacheWrite: usage.cacheWrite,
             cost: cost?.total,
-          });
+          };
+          this.addUsage(this.pending.usage, delta);
+          this.emitUsage(delta);
         }
       }
     } else if (message.type === "message_start") {
@@ -468,14 +474,25 @@ export class ChildAgentRuntime {
     }
   }
 
-  private addUsage(target: SidekickUsage, raw: Record<string, unknown>): void {
+  private emitUsage(raw: Record<string, unknown>): void {
+    if (this.cfg.onUsage === undefined) return;
+    const delta = emptyUsage();
+    this.addUsage(delta, raw, false);
+    try {
+      this.cfg.onUsage(delta);
+    } catch {
+      // Accounting must not affect the handoff.
+    }
+  }
+
+  private addUsage(target: SidekickUsage, raw: Record<string, unknown>, rollup = true): void {
     const number = (value: unknown) => (typeof value === "number" && Number.isFinite(value) ? value : 0);
     target.input += number(raw.input);
     target.output += number(raw.output);
     target.cacheRead += number(raw.cacheRead);
     target.cacheWrite += number(raw.cacheWrite);
     target.cost += number(raw.cost);
-    if (target !== this.usage) this.addUsage(this.usage, raw);
+    if (rollup && target !== this.usage) this.addUsage(this.usage, raw);
   }
 
   private finish(status: HandoffReport["status"], text?: string, error?: string): void {

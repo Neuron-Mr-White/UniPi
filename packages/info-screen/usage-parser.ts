@@ -7,7 +7,7 @@
 
 import { readdirSync, readFileSync, statSync, existsSync, mkdirSync, writeFileSync, renameSync, openSync, readSync, closeSync } from "node:fs";
 import { join, basename, dirname } from "node:path";
-import { SavingsAccumulator, totalsOf, EMPTY_SAVINGS, type CompactionSaving, type SavingsTotals } from "@pi-unipi/core";
+import { SavingsAccumulator, totalsOf, EMPTY_SAVINGS, CHILD_USAGE_ENTRY, childUsageOf, type CompactionSaving, type SavingsTotals } from "@pi-unipi/core";
 import { homedir } from "node:os";
 
 /** Usage data for a single message */
@@ -282,7 +282,7 @@ function extractRecords(
   forEachLine(filePath, (line) => {
     if (!line || !line.trim()) return;
     // Cheap pre-filter: only messages and compactions matter.
-    if (!line.includes('"assistant"') && !line.includes('"compaction"')) return;
+    if (!line.includes('"assistant"') && !line.includes('"compaction"') && !line.includes(CHILD_USAGE_ENTRY)) return;
     let entry: any;
     try {
       entry = JSON.parse(line);
@@ -290,6 +290,34 @@ function extractRecords(
       return; // Skip malformed lines
     }
     acc.feed(entry);
+
+    // Child-agent spend recorded into a lead session (subagent / graph /
+    // swarm work, Fusion sidekick). Those children's own session files live
+    // outside the scanned sessions dir, so this is their only trace here.
+    // Non-standalone entries (bg_run agents) are already counted from their
+    // own session files.
+    const child = childUsageOf(entry);
+    if (child !== undefined) {
+      if (!child.standalone) return;
+      const ts = entry.timestamp ? new Date(entry.timestamp).getTime() : 0;
+      // Child model keys are `provider/id`; assistant records key by bare id.
+      const model = child.model ? child.model.slice(child.model.indexOf("/") + 1) : "child-agent";
+      let cidx = modelIndex.get(model);
+      if (cidx === undefined) {
+        cidx = models.length;
+        models.push(model);
+        modelIndex.set(model, cidx);
+      }
+      records.push([
+        Number.isNaN(ts) ? 0 : ts,
+        child.input + child.output + child.cacheRead + child.cacheWrite,
+        child.input + child.output + child.cacheWrite,
+        child.cost,
+        cidx,
+        child.input > 0 || child.output > 0 || child.cost > 0 ? 1 : 0,
+      ]);
+      return;
+    }
 
     if (entry.type !== "message" || entry.message?.role !== "assistant") return;
     const msg = entry.message;

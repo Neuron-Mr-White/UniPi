@@ -9,6 +9,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Changed
 - Graph and swarm progress bars count what's settled. The number is done + failed over the total (1 done, 1 failed, 1 running, 1 not started reads `2/4`). The bar shows done in green, failed in red and running in the accent colour, with a highlight sweeping across the running part while the run is live. Items not started yet stay grey. The same change applies to `/unipi:visualize-progress`, the app's Progress sheet and mode popover, the chart title and the end-of-run log line.
 
+### Fixed
+- Session cost now includes what child agents spend. Graph and swarm work, subagents, the Fusion sidekick and `bg_run` agent tasks each run as a separate pi process, and the footer, the app's session cost and `/unipi:info` usage used to count only the lead's own messages. So any multi-agent run was under-priced. Each child model reply is now written into the lead session as a `unipi-child-usage` entry. The entry is saved with the session, follows the branch you're on and is never sent to the model. The footer and app add these entries to the cost, and info-screen stats count the subagent and sidekick ones too. `bg_run` agents are already counted from their own session files, so they aren't counted twice. Token counts are still the lead's own. Not covered yet: grandchildren (subagents started by subagents) and runs from before this fix.
+
 ## [3.0.0-alpha.44] — 2026-10-19
 
 ### Fixed

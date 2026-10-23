@@ -18,6 +18,7 @@
 
 import { tpsTracker } from "./tps-tracker.js";
 import { compactionSummary } from "./segments/compactor.js";
+import { childUsageOf } from "@pi-unipi/core";
 
 /** Data the stats strip reads, accumulated during the scan. */
 export interface SessionSnapshot {
@@ -33,6 +34,9 @@ export interface SessionSnapshot {
   cacheRead: number;
   cacheWrite: number;
   cost: number;
+  /** Part of `cost` spent by child agents (graph/swarm work, subagents,
+   *  Fusion sidekick, bg_run agents) — `unipi-child-usage` entries. */
+  childCost: number;
   /** Compaction summary over the whole branch. */
   compactionCount: number;
   compactionBefore: number;
@@ -52,6 +56,7 @@ function emptySnapshot(): SessionSnapshot {
     cacheRead: 0,
     cacheWrite: 0,
     cost: 0,
+    childCost: 0,
     compactionCount: 0,
     compactionBefore: 0,
     compactionAfter: 0,
@@ -194,6 +199,14 @@ export class SessionScanner {
   }
 
   private processEntry(e: Record<string, unknown>, entryIdx: number): void {
+    // Child-agent spend recorded into this session: price only. Tokens stay
+    // lead-only (they describe this session's own context/throughput).
+    const child = childUsageOf(e);
+    if (child !== undefined) {
+      this.snapshot.cost += child.cost;
+      this.snapshot.childCost += child.cost;
+      return;
+    }
     if (e.type !== "message") return;
     const m = e.message as Record<string, unknown> | undefined;
     if (!m) return;

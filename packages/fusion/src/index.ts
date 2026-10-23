@@ -16,7 +16,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { Api, Model } from "@earendil-works/pi-ai";
 import type { AutocompleteProvider, AutocompleteSuggestions } from "@earendil-works/pi-tui";
-import { createSpinnerLine, harnessToolResultDetails, registerCommandRunner, stateDir, UNIPI_EVENTS, UNIPI_PREFIX, HUB_OVERLAY_OPTIONS, HUB_PICKER_OVERLAY_OPTIONS, bus } from "@pi-unipi/core";
+import { createSpinnerLine, recordChildUsage, harnessToolResultDetails, registerCommandRunner, stateDir, UNIPI_EVENTS, UNIPI_PREFIX, HUB_OVERLAY_OPTIONS, HUB_PICKER_OVERLAY_OPTIONS, bus } from "@pi-unipi/core";
 import { join } from "node:path";
 import {
   effortLabel,
@@ -334,6 +334,8 @@ export default function fusionExtension(pi: ExtensionAPI): void {
             /* entry rendering never affects the handoff */
           }
         },
+        // Sidekick spend belongs in the lead session's cost.
+        onUsage: (delta) => recordChildUsage((type, data) => pi.appendEntry(type, data), { source: "fusion", id: runtime?.latest()?.id ?? "sidekick", model: active?.kind === "fusion" ? active.sidekick : undefined }, delta),
       });
     }
     return runtime;

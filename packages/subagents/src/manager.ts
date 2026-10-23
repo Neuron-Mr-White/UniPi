@@ -253,6 +253,7 @@ export class SubagentManager {
     maxDepth: number;
     onProgress?: () => void;
     onStep?: (step: SidekickStep) => void;
+    onUsage?: (delta: SidekickUsage) => void;
   }): ChildAgentRuntime {
     if (this.runtimeFactory !== undefined) return this.runtimeFactory(opts);
     return new ChildAgentRuntime({
@@ -269,6 +270,7 @@ export class SubagentManager {
       promptPrefix: `Subagent "${opts.title}": `,
       onProgress: opts.onProgress,
       onStep: opts.onStep,
+      onUsage: opts.onUsage,
     });
   }
 
@@ -290,6 +292,8 @@ export class SubagentManager {
     onDone?: (run: SubagentRun, report: HandoffReport) => void;
     /** UI-only completed-step stream (the final report is never emitted). */
     onStep?: (record: SubagentRecord, step: SidekickStep) => void;
+    /** Per child assistant message usage delta (lead cost accounting). */
+    onUsage?: (record: SubagentRecord, delta: SidekickUsage) => void;
   }): { run: SubagentRun } | { error: string } {
     const max = opts.maxConcurrent ?? MAX_CONCURRENT;
     if (opts.resume !== undefined && this.runs.has(opts.resume)) {
@@ -346,6 +350,15 @@ export class SubagentManager {
             opts.onStep?.(record, step);
           } catch {
             /* UI-only step stream never affects the run */
+          }
+        },
+      onUsage: opts.onUsage === undefined
+        ? undefined
+        : (delta) => {
+          try {
+            opts.onUsage?.(record, delta);
+          } catch {
+            /* accounting never affects the run */
           }
         },
     });

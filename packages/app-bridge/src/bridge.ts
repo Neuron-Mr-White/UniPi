@@ -46,7 +46,7 @@ import { fileSuggestions } from "./files.js";
 import { statPaths } from "./paths.js";
 import { registerPath, resolveMedia } from "./media.js";
 import { listWorkItems, stopWorkItem, backgroundWorkItem, workLogPage, workTranscript } from "./work.js";
-import { bus, callCommandRunner, commandArgCompleters, pendingWorkLabel, silenceCommandEcho, subscribePendingWork, UNIPI_EVENTS } from "@pi-unipi/core";
+import { bus, callCommandRunner, childUsageOf, commandArgCompleters, onChildUsage, pendingWorkLabel, silenceCommandEcho, subscribePendingWork, UNIPI_EVENTS } from "@pi-unipi/core";
 import type { BtwListPage } from "./wire.js";
 
 /** `media_chunk.data` (base64) stays well under the 900 KiB bridge line
@@ -406,6 +406,10 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
   let deltaTimer: NodeJS.Timeout | undefined;
   const toolTimers = new Map<string, NodeJS.Timeout>();
   let sessionCost = 0;
+  // Child agents (graph/swarm work, subagents, Fusion sidekick, bg_run
+  // agents) record their spend into this session as custom entries; count it
+  // live too so the phone's cost isn't lead-only.
+  let unsubChildUsage: (() => void) | undefined;
   /** "Needs you" (UNI-161): an open dialog, or idle right after an
    * `agent_end` no phone has seen yet. Written into the discovery record so
    * the host's `chat_list` (crates/host/src/chat.rs) can float it to the top
@@ -597,6 +601,7 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
     try {
       for (const e of ctx!.sessionManager.getEntries() as Array<{ type?: string; message?: { role?: string; usage?: { cost?: { total?: number } } } }>) {
         if (e.type === "message" && e.message?.role === "assistant") sessionCost += e.message.usage?.cost?.total ?? 0;
+        else sessionCost += childUsageOf(e)?.cost ?? 0;
       }
     } catch {
       // ignore
@@ -2061,6 +2066,10 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
         syncSoon();
       });
       computeCost();
+      unsubChildUsage?.();
+      unsubChildUsage = onChildUsage((data) => {
+        sessionCost += data.cost;
+      });
       setRemoteDialogs(hub);
       listen();
       writeRecord();
@@ -2184,6 +2193,8 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
   };
   on("session_start", safe(() => watchDream()));
   on("session_shutdown", safe(() => {
+    unsubChildUsage?.();
+    unsubChildUsage = undefined;
     unsubDream?.();
     unsubDream = undefined;
     if (dreamTimer) clearTimeout(dreamTimer);
