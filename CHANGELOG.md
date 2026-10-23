@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.0.0-alpha.45] — 2026-10-24
+
+Includes the never-published 3.0.0-alpha.44 changes below.
+
 ### Changed
 - Graph and swarm progress bars count what's settled. The number is done + failed over the total (1 done, 1 failed, 1 running, 1 not started reads `2/4`). The bar shows done in green, failed in red and running in the accent colour, with a highlight sweeping across the running part while the run is live. Items not started yet stay grey. The same change applies to `/unipi:visualize-progress`, the app's Progress sheet and mode popover, the chart title and the end-of-run log line.
 

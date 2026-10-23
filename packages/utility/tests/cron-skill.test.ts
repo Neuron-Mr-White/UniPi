@@ -54,7 +54,7 @@ describe("cron SKILL.md", () => {
 
 describe("cron skill condition (gated like browser)", () => {
   it("hostInstalled reused as-is: no host dir, no PATH entry -> not installed", () => {
-    assert.equal(hostInstalled("/does/not/exist", { PATH: "/usr/bin" }), false);
+    assert.equal(hostInstalled("/does/not/exist", { PATH: "/does/not/exist/bin" }), false);
   });
 
   it("hostInstalled: host dir exists -> installed", () => {

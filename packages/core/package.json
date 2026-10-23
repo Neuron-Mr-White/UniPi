@@ -1,6 +1,6 @@
 {
   "name": "@pi-unipi/core",
-  "version": "3.0.0-alpha.44",
+  "version": "3.0.0-alpha.45",
   "description": "Shared utilities, event types, and constants for Unipi extension suite",
   "type": "module",
   "license": "MIT",
