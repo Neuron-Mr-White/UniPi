@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { progressLines, progressBar } from "@pi-unipi/core";
+import { progressLines, progressBar, statusBar, statusBarCells } from "@pi-unipi/core";
 import { goalEstimatePrompt, goalProgressData, parseEstimate, ralphProgressData } from "../progress.js";
 
 const plain = { fg: (_c: string, s: string) => s, bold: (s: string) => s };
@@ -10,6 +10,21 @@ test("bar: solid done, shade in progress, light for the rest", () => {
   assert.equal(progressBar(plain, 10, 0, 10, 10), "██████████");
   assert.equal(progressBar(plain, 0, 1, 40, 10), "▒░░░░░░░░░", "a live slice always shows at least one shade cell");
   assert.equal(progressBar(plain, 0, 0, 0, 5), "░░░░░");
+});
+
+test("status bar: done, failed, running, grey rest; running highlight sweeps with the frame", () => {
+  // 1 done, 1 failed, 1 running, 1 not started → 2/4 settled.
+  assert.equal(statusBar(plain, { done: 1, failed: 1, running: 1, total: 4 }, 8), "████▒▒░░");
+  assert.deepEqual(statusBarCells({ done: 1, failed: 1, running: 1, total: 4 }, 8), [2, 2, 2, 2]);
+  assert.equal(statusBar(plain, { done: 1, failed: 1, running: 1, total: 4 }, 8, 1), "████▓▒░░");
+  assert.equal(statusBar(plain, { done: 1, failed: 1, running: 1, total: 4 }, 8, 2), "████▒▓░░");
+  assert.equal(statusBar(plain, { done: 0, failed: 0, running: 0, total: 0 }, 5), "░░░░░");
+  // Every non-empty segment keeps a cell; widths always sum to the bar.
+  const cells = statusBarCells({ done: 97, failed: 1, running: 1, total: 100 }, 10);
+  assert.equal(cells.reduce((a, b) => a + b, 0), 10);
+  assert.ok(cells[1] >= 1 && cells[2] >= 1);
+  const colored = { fg: (c: string, s: string) => `<${c}>${s}`, bold: (s: string) => s };
+  assert.equal(statusBar(colored, { done: 1, failed: 1, running: 0, total: 4 }, 4), "<success>█<error>█<borderMuted>░░");
 });
 
 test("ralph bar counts checklist items; the next batch is shaded", () => {

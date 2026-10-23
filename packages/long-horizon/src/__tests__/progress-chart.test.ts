@@ -69,7 +69,7 @@ test("mermaid source matches the app's builder (graph)", () => {
 
 test("mermaid source matches the app's builder (swarm rows of 3)", () => {
   const src = progressMermaid(swarmRun());
-  assert.match(src, /^ {2}subgraph items\["Translate the book · 2\/7"\]$/m);
+  assert.match(src, /^ {2}subgraph items\["Translate the book · 3\/7"\]$/m);
   assert.match(src, /^ {4}n0_w1 ~~~ n1_w2 ~~~ n2_w3$/m);
   assert.match(src, /^ {4}n3_w4 ~~~ n4_w5 ~~~ n5_w6$/m);
   assert.doesNotMatch(src, /-->/);

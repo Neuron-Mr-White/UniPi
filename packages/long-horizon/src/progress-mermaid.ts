@@ -90,7 +90,7 @@ export function progressMermaid(run: Run): string {
       }
     }
   } else {
-    lines.push(`  subgraph items["${mermaidText(run.title, 60)} · ${run.counts.done}/${run.counts.total}"]`);
+    lines.push(`  subgraph items["${mermaidText(run.title, 60)} · ${run.counts.done + run.counts.failed}/${run.counts.total}"]`);
     for (const item of run.items) lines.push(node(item));
     // Rows of SWARM_COLS: invisible links chain a row left→right; unlinked rows stack.
     for (let i = 0; i < run.items.length; i += SWARM_COLS) {

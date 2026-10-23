@@ -16,7 +16,7 @@
  */
 
 import type { LhProgressEvent, LhProgressItem, LhProgressLogLine, LhProgressRun } from "@pi-unipi/core";
-import { progressBar, spinnerFrame, SPINNER_MS, type KitTheme } from "@pi-unipi/core";
+import { progressBar, statusBar, spinnerFrame, SPINNER_MS, type KitTheme } from "@pi-unipi/core";
 import type { ThemeColor } from "@earendil-works/pi-coding-agent";
 import { visibleWidth } from "@earendil-works/pi-tui";
 
@@ -532,15 +532,17 @@ export function renderProgressView(t: KitTheme, progress: LhProgressEvent | unde
     c.put(x, y, fit(`iteration ${r.iteration}${r.maxIterations > 0 ? ` of ${r.maxIterations}` : ""}  ·  ${r.checked} of ${r.total} checked`, inner), "muted");
   } else if (k.total > 0) {
     const barW = Math.max(10, Math.min(24, inner - 46));
-    c.raw(x, y, progressBar(t, k.done, live ? k.running : 0, k.total, barW, RUN_COLOR[run.status]), barW);
+    // done · failed · running (sweeping highlight while live) · grey rest; the number is settled = done + failed.
+    c.raw(x, y, statusBar(t, { done: k.done, failed: k.failed, running: k.running, total: k.total }, barW, live ? Math.floor(now / 120) : undefined), barW);
     let cx = x + barW + 2;
     const seg = (text: string, color: ThemeColor, bold = false) => {
       c.put(cx, y, fit(text, Math.max(0, x + inner - cx)), color, bold);
       cx += text.length;
     };
-    seg(`${k.done} of ${k.total} done`, "text", true);
-    if (k.running) seg(` · ${k.running} running`, "accent");
+    seg(`${k.done + k.failed}/${k.total}`, "text", true);
+    if (k.done) seg(` · ${k.done} done`, "success");
     if (k.failed) seg(` · ${k.failed} failed`, "error");
+    if (k.running) seg(` · ${k.running} running`, "accent");
     if (k.queued) seg(` · ${k.queued} waiting`, "dim");
   }
   y += 2;

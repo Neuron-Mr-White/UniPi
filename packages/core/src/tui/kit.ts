@@ -196,3 +196,65 @@ export function progressBar(t: KitTheme, done: number, active: number, total: nu
   const rest = Math.max(0, width - solid - shade);
   return t.fg(color, "█".repeat(solid)) + t.fg(color, "▒".repeat(Math.min(shade, width - solid))) + t.fg("borderMuted", "░".repeat(rest));
 }
+
+export interface StatusBarCounts {
+  readonly done: number;
+  readonly failed: number;
+  readonly running: number;
+  readonly total: number;
+}
+
+/**
+ * Cells per segment for `counts` (largest remainder; every non-empty segment
+ * keeps at least one cell). Order: done, failed, running, rest.
+ */
+export function statusBarCells(counts: StatusBarCounts, width: number): [number, number, number, number] {
+  const total = Math.max(0, counts.total);
+  if (total <= 0 || width <= 0) return [0, 0, 0, Math.max(0, width)];
+  let left = total;
+  const take = (n: number) => {
+    const v = Math.max(0, Math.min(left, n));
+    left -= v;
+    return v;
+  };
+  const parts = [take(counts.done), take(counts.failed), take(counts.running)];
+  parts.push(left);
+  const exact = parts.map((n) => (n / total) * width);
+  const cells = exact.map((x, i) => (parts[i]! > 0 ? Math.max(1, Math.floor(x)) : 0));
+  let spare = width - cells.reduce((a, b) => a + b, 0);
+  const order = exact.map((x, i) => ({ i, r: x - Math.floor(x) })).sort((a, b) => b.r - a.r);
+  for (let k = 0; spare > 0 && k < order.length * 4; k++) {
+    const { i } = order[k % order.length]!;
+    if (parts[i]! > 0) {
+      cells[i]! += 1;
+      spare -= 1;
+    }
+  }
+  // Over budget (many 1-cell minimums): trim the widest segments.
+  while (spare < 0) {
+    let wi = 0;
+    for (let i = 1; i < cells.length; i++) if (cells[i]! > cells[wi]!) wi = i;
+    if (cells[wi]! <= 1) break;
+    cells[wi]! -= 1;
+    spare += 1;
+  }
+  return cells as [number, number, number, number];
+}
+
+/**
+ * `██████▒▓▒░░░`: done (success) and failed (error) solid, running (accent)
+ * shaded with a highlight that sweeps across it as `frame` advances, the
+ * not-started rest grey. The settled count is done + failed.
+ */
+export function statusBar(t: KitTheme, counts: StatusBarCounts, width = 20, frame?: number): string {
+  const [d, f, r, rest] = statusBarCells(counts, width);
+  let running = "";
+  if (r > 0) {
+    if (frame === undefined) running = t.fg("accent", "▒".repeat(r));
+    else {
+      const hot = ((frame % (r + 2)) + r + 2) % (r + 2) - 1; // -1 and r = off-bar pause
+      for (let i = 0; i < r; i++) running += t.fg("accent", i === hot ? "▓" : "▒");
+    }
+  }
+  return t.fg("success", "█".repeat(d)) + t.fg("error", "█".repeat(f)) + running + t.fg("borderMuted", "░".repeat(rest));
+}

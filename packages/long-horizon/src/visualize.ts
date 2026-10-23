@@ -33,7 +33,7 @@ export function registerVisualizeProgress(pi: ExtensionAPI): void {
         const p = bus.get(UNIPI_EVENTS.LH_PROGRESS);
         const run = p?.current ?? p?.last;
         const sticky = bus.get(UNIPI_EVENTS.LH_STATE)?.mode;
-        ctx.ui.notify(run ? `${run.mode}: ${run.title} — ${run.counts.done}/${run.counts.total} done (${run.status})` : sticky && sticky !== "none" ? `${sticky} mode is on — no run started yet.` : "No long-horizon mode active.", "info");
+        ctx.ui.notify(run ? `${run.mode}: ${run.title} — ${run.counts.done + run.counts.failed}/${run.counts.total} settled (${run.status})` : sticky && sticky !== "none" ? `${sticky} mode is on — no run started yet.` : "No long-horizon mode active.", "info");
         return;
       }
       openProgressView(pi, ctx);

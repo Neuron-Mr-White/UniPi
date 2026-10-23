@@ -154,7 +154,7 @@ test("log is derived from transitions only: start, item flips, finish", () => {
   // Finish: the last flips are still logged, then the finish line.
   const input = graphInput({ a: "completed", b: "completed", c: "completed" });
   const s2 = withProgressLog(s1, lhProgressSnapshot({ ...input, owner: undefined, finished: { kind: "graph", label: "Health", terminalReason: "settled", endedAt: new Date(4000).toISOString() }, now: 4000 }));
-  assert.deepEqual(s2.log.slice(2).map((l) => l.text), ["a done", "b done", "c done", "Graph finished (settled) — 3/3 done"]);
+  assert.deepEqual(s2.log.slice(2).map((l) => l.text), ["a done", "b done", "c done", "Graph finished (settled) — 3/3 settled"]);
 });
 
 test("log: ralph iteration and goal turn/estimate lines; bounded to LOG_MAX", () => {
@@ -250,7 +250,7 @@ test("view: graph draws wave columns, item boxes and dependency arrows", () => {
   assert.match(text, /▶│/, "arrow into the dependent box");
   assert.match(text, /a done/, "log line from the same state");
   assert.match(text, /Graph · running/);
-  assert.match(text, /1 of 3 done · 1 running · 1 waiting/);
+  assert.match(text, /1\/3 · 1 done · 1 running · 1 waiting/);
 });
 
 test("view: running item spins (frame differs over time), settled items don't", () => {

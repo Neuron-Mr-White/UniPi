@@ -283,7 +283,7 @@ export function progressLogLines(prev: LhProgressEvent | undefined, next: LhProg
   if (a && !sameRun(a, b)) {
     if (ended) {
       const word = ended.status === "done" ? "finished" : ended.status === "failed" ? "finished with failures" : "stopped";
-      out.push({ at, text: `${MODE_TITLE[ended.mode]} ${word}${ended.reason ? ` (${ended.reason})` : ""} — ${ended.counts.total > 0 ? `${ended.counts.done}/${ended.counts.total} done` : ended.title}`, status: ended.status });
+      out.push({ at, text: `${MODE_TITLE[ended.mode]} ${word}${ended.reason ? ` (${ended.reason})` : ""} — ${ended.counts.total > 0 ? `${ended.counts.done + ended.counts.failed}/${ended.counts.total} settled${ended.counts.failed ? ` (${ended.counts.failed} failed)` : ""}` : ended.title}`, status: ended.status });
     } else if (!b) {
       out.push({ at, text: `${MODE_TITLE[a.mode]} ended`, status: "stopped" });
     }
