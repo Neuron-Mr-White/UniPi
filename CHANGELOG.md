@@ -8,7 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [3.0.0] — 2026-10-25
 
-UniPi 3.0 is the first stable release of the 3.x line. It replaces 2.20.5 as npm `latest`. Upgrade guide: [docs/guide/upgrade-3.0.md](docs/guide/upgrade-3.0.md).
+UniPi 3.0 is the first stable release of the 3.x line. It replaces 2.20.5 as npm `latest`. Upgrade guide: [docs/guide/upgrade-3.0.md](https://github.com/Neuron-Mr-White/unipi/blob/main/docs/guide/upgrade-3.0.md).
 
 ### Highlights
 
