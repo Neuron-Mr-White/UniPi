@@ -27,15 +27,14 @@
 ## Install
 
 ```bash
-pi install npm:@pi-unipi/unipi@alpha
+pi install npm:@pi-unipi/unipi
 ```
 
 > [!NOTE]
-> **UniPi 3 is in alpha.** This README describes v3, published under the npm
-> `alpha` tag. Plain `pi install npm:@pi-unipi/unipi` still installs the stable
-> 2.x line ([2.x README](https://github.com/Neuron-Mr-White/unipi/tree/main#readme)).
-> To update an alpha install: `pi update npm:@pi-unipi/unipi@alpha`. To go back
-> to stable: `pi install npm:@pi-unipi/unipi@latest`.
+> **Coming from 2.x?** Read the [3.0 upgrade guide](docs/guide/upgrade-3.0.md).
+> On a 3.0 alpha? The updater offers 3.0.0 at session start, or run
+> `pi install npm:@pi-unipi/unipi` once to move off the `alpha` tag.
+> The 2.x line stays on the [`v2` branch](https://github.com/Neuron-Mr-White/unipi/tree/v2#readme).
 
 UniPi needs [Pi](https://www.npmjs.com/package/@earendil-works/pi-coding-agent)
 `0.87.1` or later. This command installs 21 extension packages. Each package
@@ -258,11 +257,7 @@ The recent releases, in short. The [changelog](CHANGELOG.md) has the details.
 
 | Release | What changed for you |
 |---|---|
-| alpha.36 | One work tray for background tasks and subagents (press ↓ on an empty input); nothing spins under the editor any more. `/unipi:visualize-progress` shows a long run live. Dream (off by default, `/unipi:dream`) learns from past sessions. Typed commands show as normal messages, and you get one "finished" notification per run. |
-| alpha.29 | Plan mode plans with you: it asks before it submits, blocks only edits outside the plan, and the review shows a summary beside the steps. Notify can alert on any prompt the agent waits on (Input Needed). |
-| alpha.27 | The footer shows tokens in and out and the session cost under the input. It fits narrow and short windows. Each part of the stats line, the frame badges and the rainbow can be turned off in `/unipi:settings` → Footer. The classic footer is gone. |
-| alpha.25 | The Unicrab splash at startup. A new `/unipi:info`: this session, the context bucket, compaction savings and `s`/`p`/`g` scope tags. Prompts that UniPi sends for you (goal, summarize, answer) show as a UniPi panel, not as your own message. |
-| alpha.24 | The `summarize` skill and `/unipi:summarize [focus]`. Long work ends with a short recap: the answer first, then findings, open items and questions. |
+| 3.0.0 | The first stable UniPi 3. Long work modes, MemPalace memory, the new Kanboard, plan and permission modes, rebuilt subagents and compactor, and the UniPi app bridge. See the [upgrade guide](docs/guide/upgrade-3.0.md). |
 
 ## Docs
 

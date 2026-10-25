@@ -1,6 +1,6 @@
 # Slash commands
 
-This page lists every slash command that UniPi v3.0.0-alpha registers. The list
+This page lists every slash command that UniPi 3 registers. The list
 comes from the `pi.registerCommand` calls in the source.
 
 ## How to read this page

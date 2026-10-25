@@ -5,7 +5,7 @@ This page shows how to install UniPi and what to try in your first session.
 ## Requirements
 
 - [Pi](https://www.npmjs.com/package/@earendil-works/pi-coding-agent) version
-  `0.87.1` or later. UniPi 3.0.0-alpha uses the Pi 0.87 extension API.
+  `0.87.1` or later. UniPi 3 uses the Pi 0.87 extension API.
 - A model that Pi can use. Run `/login` or `/model` in Pi to set one.
 
 If you must stay on an older Pi, install `@pi-unipi/*@<3.0.0`.
@@ -15,12 +15,11 @@ If you must stay on an older Pi, install `@pi-unipi/*@<3.0.0`.
 Run this command:
 
 ```bash
-pi install npm:@pi-unipi/unipi@alpha
+pi install npm:@pi-unipi/unipi
 ```
 
-UniPi 3 is in alpha and ships under the npm `alpha` tag. Without `@alpha`
-the command installs the stable 2.x line. Update an alpha install with
-`pi update npm:@pi-unipi/unipi@alpha`.
+Coming from 2.x? Read the [3.0 upgrade guide](upgrade-3.0.md). On a 3.0
+alpha, run the same command once to move off the `alpha` tag.
 
 This command installs all UniPi packages. Each package also works alone. To
 install one package, use its npm name, for example:

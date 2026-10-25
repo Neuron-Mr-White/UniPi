@@ -406,7 +406,13 @@ npm publish --access public
 
 Expected: All packages published successfully.
 
-### Step 13b: Prerelease Channel (alpha/beta) — v3 branch only
+### Step 13b: Prerelease Channel (alpha/beta)
+
+> 3.0.0 (2026-10-25) graduated the 3.x line: `main` is 3.x, `latest` = 3.x, the
+> 2.x line lives on the `v2` branch. The `alpha` dist-tag was left at
+> 3.0.0-alpha.45 on purpose — alpha installs see `latest` as newer and the
+> updater (UNI-272) reinstalls them from `latest`. Don't re-point `alpha` at a
+> stable version (a tie keeps installs on the `alpha` spec).
 
 Prereleases publish under a dist-tag so `latest` never moves. The branch version
 already carries the suffix (`3.0.0-alpha.N`); publish with the matching tag:
