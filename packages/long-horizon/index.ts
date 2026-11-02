@@ -28,6 +28,22 @@ import { countStatuses, GraphEngine, type GraphMode } from "./src/graph/engine.j
 import { graphRunnerFromPort, readGraphRunPort } from "./src/graph/runner.js";
 import { TodoStore, registerTodoTool } from "./src/tools/todo.js";
 import { wireRuntime } from "./src/runtime.js";
+import {
+  adoptLegacyState,
+  legacyOwnershipEvidence,
+  graphUpdatedAt as graphUpdatedAtFallback,
+  aggregateGraphHistory,
+  findSiblingWork,
+  graphOwnerNote,
+  isContinuedSession,
+  legacyInRepoDir,
+  legacyWorkspaceDir,
+  pruneSiblingSessionDirs,
+  scanSiblingGraphOwners,
+  sessionHasState,
+  sessionStateDir,
+  type SiblingGraphOwner,
+} from "./src/session-state.js";
 import { ralphProgressData } from "./src/progress.js";
 import { lhProgressSnapshot, sameProgress, withProgressLog, type ProgressGoalEstimate } from "./src/progress-snapshot.js";
 import { registerVisualizeProgress } from "./src/visualize.js";
@@ -44,19 +60,21 @@ const LH_DIR = ".unipi/long-horizon";
  * if the new file is absent but the legacy in-repo <cwd>/.unipi/long-horizon/
  * file exists, move it over on first access.
  */
+/**
+ * UNI-followup: a run belongs to the session that started it — the dir is
+ * `.../long-horizon/sessions/<sessionId>/` once session_start has stamped
+ * `currentSessionId` (before that, pre-session access still lands in the
+ * legacy workspace-level dir). The legacy workspace-level files and the
+ * older in-repo `.unipi/long-horizon/` files are adopted into the session
+ * dir at session_start (continued sessions only, see the adoption there).
+ */
+let currentSessionId: string | undefined;
+const workspaceStateDir = (): string => stateDir("long-horizon", "state");
+const lhSessionsDir = (): string => join(workspaceStateDir(), "sessions");
+
 function lhStatePath(file: string): string {
-  const dest = join(stateDir("long-horizon", "state"), file);
-  if (!existsSync(dest)) {
-    const legacy = join(resolve(process.cwd()), LH_DIR, file);
-    if (existsSync(legacy)) {
-      try {
-        renameSync(legacy, dest);
-      } catch {
-        // Fall through: a failed move just means we start fresh at dest.
-      }
-    }
-  }
-  return dest;
+  const dir = currentSessionId ? sessionStateDir(workspaceStateDir(), currentSessionId) : workspaceStateDir();
+  return join(dir, file);
 }
 
 export default function longHorizon(pi: ExtensionAPI): void {
@@ -126,8 +144,10 @@ export default function longHorizon(pi: ExtensionAPI): void {
   }
   // Bound once the graph engine exists (owner events can fire before that).
   let graphOwnerChanged: ((event: OwnerEvent) => void) | undefined;
+  const sessionInfo: { id?: string; name?: string; pid?: number } = {};
   const owner = new OwnerCoordinator({
     statePath,
+    session: () => sessionInfo,
     onChange: (_snapshot, event: OwnerEvent) => {
       // Owner transitions sync pi's active set (UNI-90): activate/resume/restore
       // outside before_agent_start must expose the owner's mode tools at once.
@@ -567,8 +587,56 @@ export default function longHorizon(pi: ExtensionAPI): void {
   // reattaches the owner's tool surface; the continuation arms a recovery
   // fragment for the first post-restart turn.
   pi.on("session_start", (event, ctx) => {
-    // A sticky mode belongs to the session that picked it (UNI-165).
+    // UNI-followup: stamp the session id FIRST — every lhStatePath() read below
+    // (restore/bind) must land in THIS session's dir before any restore runs.
     const reason = (event as { reason?: string } | undefined)?.reason;
+    const manager = (ctx as { sessionManager?: { getSessionId?: () => string; getEntries?: () => unknown[] } } | undefined)?.sessionManager;
+    try {
+      currentSessionId = manager?.getSessionId?.();
+    } catch {
+      // Keep the legacy workspace dir when the id is unavailable.
+    }
+    sessionInfo.id = currentSessionId;
+    try {
+      const name = (pi as unknown as { getSessionName?: () => string | undefined }).getSessionName?.();
+      if (name) sessionInfo.name = name;
+    } catch {
+      // Name is cosmetic.
+    }
+    sessionInfo.pid = process.pid;
+    const priorEntries = (() => {
+      try {
+        return manager?.getEntries?.().length ?? 0;
+      } catch {
+        return 0;
+      }
+    })();
+    const continued = isContinuedSession(reason, priorEntries);
+
+    // Legacy adoption (continued sessions only, and only when THIS session's
+    // own transcript proves it owned the run — the entries must contain the
+    // legacy graph id / goal id / objective / loop name). Otherwise the files
+    // stay put: an unrelated `pi -r` must not adopt (and drive) someone's
+    // graph — that would re-introduce the cross-session wake bug. The
+    // sibling-owner note still points the user at it.
+    const legacyDirs = [legacyWorkspaceDir(workspaceStateDir()), legacyInRepoDir(resolve(process.cwd()))];
+    const entriesJson = (() => {
+      try {
+        return JSON.stringify(manager?.getEntries?.() ?? []);
+      } catch {
+        return "";
+      }
+    })();
+    const legacyEvidence = continued && !sessionHasState(sessionStateDir(workspaceStateDir(), currentSessionId ?? ""))
+      ? legacyOwnershipEvidence(entriesJson, legacyDirs)
+      : false;
+        if (continued && legacyEvidence && !sessionHasState(sessionStateDir(workspaceStateDir(), currentSessionId ?? ""))) {
+      adoptLegacyState(sessionStateDir(workspaceStateDir(), currentSessionId ?? ""), legacyDirs, ["state.json", "goal.json", "graph.json"]);
+    }
+    // Housekeeping: siblings with no owner, no open graph, >30 days old.
+    if (currentSessionId) pruneSiblingSessionDirs(lhSessionsDir(), currentSessionId, Date.now());
+
+    // A sticky mode belongs to the session that picked it (UNI-165).
     if (reason === "new" || reason === "resume" || reason === "fork") gate.dropStickyWorkMode();
     // Mode tools start OFF; a restored active owner re-syncs them ON below.
     gate.resetModeTools();
@@ -601,10 +669,10 @@ export default function longHorizon(pi: ExtensionAPI): void {
     // otherwise the recovery fragment rides the next continuation.
     const goalStatus = machine.get()?.status;
     if (goalStatus === "active" || goalStatus === "waiting") {
-      // Goal state is workspace-keyed: a /new or forked session must not be
-      // driven by another session's undelivered prompt (fragment only).
-      // Print mode (no UI) owns its own prompt: never race it with a wake.
-      const redeliver = !isChildProcess() && reason !== "new" && reason !== "fork" && (ctx as { hasUI?: boolean } | undefined)?.hasUI !== false;
+      // State is session-scoped, so this is always THIS session's pending
+      // continuation. Print mode (no UI) owns its own prompt: never race it
+      // with a wake.
+      const redeliver = !isChildProcess() && (ctx as { hasUI?: boolean } | undefined)?.hasUI !== false;
       const recovery = redeliver ? continuation.recoverOnRestart() : (continuation.armRecovery(), undefined);
       if (recovery?.action === "redeliver") {
         // Outside any turn: a direct wake once startup has finished.
@@ -612,6 +680,21 @@ export default function longHorizon(pi: ExtensionAPI): void {
           if (machine.get()?.pendingContinuation?.text !== recovery.text) return; // superseded
           sendNow(recovery.text, { source: "Goal", title: "Recovery", synopsis: `Pending continuation re-delivered (attempt ${recovery.attempt})` });
         }, 0);
+      }
+    }
+    // UNI-followup: one-line note when another session holds a live graph —
+    // never reaches the model (ui.notify is user-only) and never starts a turn.
+    if (!isChildProcess() && (reason === "new" || reason === "fork" || reason === "startup" || reason === undefined) && (ctx as { hasUI?: boolean } | undefined)?.hasUI) {
+      try {
+        const siblings = scanSiblingGraphOwners(lhSessionsDir(), currentSessionId ?? "", legacyWorkspaceDir(workspaceStateDir()), legacyInRepoDir(resolve(process.cwd())))
+          .filter((o: SiblingGraphOwner) => o.sessionId !== currentSessionId);
+        const note = graphOwnerNote(siblings[0]);
+        if (note) {
+          const ui = (ctx as { ui?: { notify?: (message: string, level?: string) => void } }).ui;
+          ui?.notify?.(note, "info");
+        }
+      } catch {
+        // The note is best-effort; a failed scan must not break startup.
       }
     }
     // Resume (`pi -r`) starts no turn, so before_agent_start never fires.
@@ -627,8 +710,17 @@ export default function longHorizon(pi: ExtensionAPI): void {
     const a = (args ?? {}) as { op?: unknown; id?: unknown; graphId?: unknown };
     const op = String(a.op ?? "");
     if (op === "output") {
-      const found = graphEngine.readResult(String(a.id ?? ""), typeof a.graphId === "string" ? a.graphId : undefined);
-      if (!found) return { ok: false, reason: "That step is gone." };
+      const graphId = typeof a.graphId === "string" ? a.graphId : undefined;
+      const found = graphEngine.readResult(String(a.id ?? ""), graphId);
+      // UNI-followup: history spans the project — find results in sibling
+      // sessions' FINISHED graphs too (read-only; never an open graph).
+      const sibling = !found && graphId && currentSessionId ? findSiblingWork(lhSessionsDir(), currentSessionId, graphId, String(a.id ?? "")) : undefined;
+      if (!found) {
+        if (!sibling) return { ok: false, reason: "That step is gone." };
+        const w = sibling.work as { workId?: unknown; status?: unknown; resultId?: unknown; operatorId?: unknown; instruction?: unknown; result?: unknown; failure?: unknown; resultTruncated?: unknown };
+        return { ok: true, output: { graphId, id: String(w.workId ?? a.id ?? ""), status: String(w.status ?? ""), ...(w.resultId ? { resultId: w.resultId } : {}), ...(w.operatorId ? { operatorId: w.operatorId } : {}), instruction: String(w.instruction ?? ""), ...(w.result ? { text: w.result } : {}), ...(w.failure ? { failure: w.failure } : {}), ...(w.resultTruncated ? { truncated: true } : {}) } };
+      }
+      // This session's own copy (authoritative).
       const w = found.work;
       return { ok: true, output: { graphId: found.graphId, id: w.workId, status: w.status, ...(w.resultId ? { resultId: w.resultId } : {}), ...(w.operatorId ? { operatorId: w.operatorId } : {}), instruction: w.instruction, ...(w.result ? { text: w.result } : {}), ...(w.failure ? { failure: w.failure } : {}), ...(w.resultTruncated ? { truncated: true } : {}) } };
     }
@@ -640,14 +732,26 @@ export default function longHorizon(pi: ExtensionAPI): void {
       return { ok: true };
     }
     if (op === "history") {
-      const runs = graphEngine.history().slice(0, 20).map((g) =>
-        lhProgressSnapshot({
-          finished: { kind: g.mode, label: g.task, terminalReason: g.finish ? "complete(finish)" : (g.abandoned?.reason ?? "stopped"), endedAt: new Date(g.finish?.at ?? g.abandoned?.at ?? g.updatedAt).toISOString() },
-          graph: g,
-          graphEngine,
-          now: Date.now(),
-        }).last,
-      ).filter((run) => run !== undefined);
+      // UNI-followup: the project's graph history — this engine's own history
+      // plus siblings' FINISHED graphs (history entries and a closed current;
+      // never another session's open graph), deduped by graphId, newest first.
+      const aggregate = currentSessionId
+        ? aggregateGraphHistory(graphEngine.history().map((g) => g as unknown as Record<string, unknown> & { graphId?: string }), lhSessionsDir(), currentSessionId)
+        : graphEngine.history().map((g) => g as unknown as Record<string, unknown> & { graphId?: string });
+      const runs = aggregate
+        .slice(0, 20)
+        .map((g) => {
+          const graph = g as unknown as Parameters<typeof lhProgressSnapshot>[0]["graph"];
+          const finish = g["finish"] as { at?: number } | undefined;
+          const abandoned = g["abandoned"] as { reason?: string; at?: number } | undefined;
+          return lhProgressSnapshot({
+            finished: { kind: (g["mode"] as "graph" | "swarm"), label: String(g["task"] ?? ""), terminalReason: finish ? "complete(finish)" : (abandoned?.reason ?? "stopped"), endedAt: new Date(finish?.at ?? abandoned?.at ?? graphUpdatedAtFallback(g)).toISOString() },
+            graph,
+            graphEngine,
+            now: Date.now(),
+          }).last;
+        })
+        .filter((run) => run !== undefined);
       return { ok: true, runs };
     }
     return { ok: false, reason: `unknown op "${op}"` };

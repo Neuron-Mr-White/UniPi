@@ -37,6 +37,14 @@ export interface OwnerState {
   readonly revision: number;
   readonly lease: OwnerLease;
   readonly updatedAt: string;
+  /**
+   * UNI-followup: the session that started/adopted this run — state is
+   * session-scoped, so these are informational (the other-session warning).
+   */
+  readonly sessionId?: string;
+  readonly sessionName?: string;
+  /** Refreshed on restore/bind so "running vs paused" is honest. */
+  readonly pid?: number;
 }
 
 export interface OwnerHistoryEntry {
@@ -57,7 +65,9 @@ export interface OwnerSnapshot {
 export interface OwnerCoordinatorDeps {
   /** Absolute path of the state file (usually under .unipi/long-horizon/). */
   statePath(): string;
-  now?(): number;
+  now?(): number
+  /** The current session's identity, stamped onto activated/adopted owners. */
+  session?(): { id?: string; name?: string; pid?: number };
   /** Best-effort observer; failures never roll back a committed transition. */
   onChange?(snapshot: OwnerSnapshot, event: OwnerEvent): void;
 }
@@ -130,6 +140,7 @@ export class OwnerCoordinator {
     if (this.active) return undefined;
     const ownerId = randomUUID();
     const now = new Date(this.deps.now?.() ?? Date.now()).toISOString();
+    const session = this.deps.session?.();
     const owner: OwnerState = Object.freeze({
       ownerId,
       kind,
@@ -138,6 +149,9 @@ export class OwnerCoordinator {
       revision: 0,
       lease: Object.freeze({ ownerId, generation: 0 }),
       updatedAt: now,
+      ...(session?.id ? { sessionId: session.id } : {}),
+      ...(session?.name ? { sessionName: session.name } : {}),
+      ...(session?.pid ? { pid: session.pid } : {}),
     });
     this.active = owner;
     return this.commit({ type: "activated", owner });
@@ -229,6 +243,24 @@ export class OwnerCoordinator {
         // Corrupt state is treated as absent: repair, don't resurrect.
       }
     }
+    // UNI-followup: adopt (stamp the session id on a legacy owner with none)
+    // and refresh the pid — the owning process is here again. An owner stamped
+    // with ANOTHER session id never happens on disk (state is session-scoped).
+    const session = this.deps.session?.();
+    const refresh = (owner: OwnerState | undefined): OwnerState | undefined => {
+      if (!owner) return owner;
+      // Adopt: a legacy owner without a session stamp belongs to whoever
+      // restores it first (the continued-session rule gated this already).
+      const stamp = owner.sessionId === undefined && session?.id ? { sessionId: session.id } : {};
+      const nameInfo = !owner.sessionName && session?.name ? { sessionName: session.name } : {};
+      const pidInfo = session?.pid !== undefined && owner.pid !== session.pid ? { pid: session.pid } : {};
+      if (!("sessionId" in stamp) && !("sessionName" in nameInfo) && !("pid" in pidInfo)) return owner;
+      const next = this.withOwner(owner, { ...stamp, ...nameInfo, ...pidInfo });
+      this.persist();
+      return next;
+    };
+    if (this.active) this.active = refresh(this.active);
+    if (this.parked) this.parked = refresh(this.parked);
     const snapshot = this.snapshot();
     this.deps.onChange?.(snapshot, { type: "restored", snapshot });
     return snapshot;
