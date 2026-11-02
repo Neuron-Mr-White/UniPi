@@ -5,8 +5,10 @@
  * reader registration for the shared core `read_subagent` tool.
  * Profiles: built-ins `subagent_explore` / `subagent_general` plus custom
  * markdown agents from ~/.unipi/config/agents and <workspace>/.unipi/config/agents.
+ * The agent files are re-read at SPAWN time, so a profile created mid-turn
+ * works immediately (no reload, no next prompt).
  * Config `subagents`: enabled, defaultModel, defaultThinking, maxConcurrent —
- * re-read every turn, so settings and agent files apply without a restart.
+ * re-read every turn, so settings apply without a restart.
  *
  * TUI (Devin parity): spawn card with a live tail, `Subagent "…" completed`
  * lines, the Subagents tab of the shared work tray (core/src/work/tray.ts —
@@ -238,6 +240,24 @@ export default function subagents(pi: ExtensionAPI, deps?: { manager?: SubagentM
     const loaded = loadProfiles(cwd);
     profiles = loaded.profiles;
     return loaded.warnings;
+  }
+
+  /**
+   * The profiles as of NOW, re-read from disk.
+   *
+   * The turn-start snapshot goes stale the moment an agent file is created or
+   * edited: `before_agent_start` fires per PROMPT, so a profile written
+   * mid-turn stays invisible until the next user message — and `/reload` (or
+   * any new prompt) is what people reach for. Re-reading on every spawn costs
+   * two readdirs, while a child pi costs a whole process: read every time.
+   */
+  function currentProfiles(cwd: string): AgentProfile[] {
+    try {
+      profiles = loadProfiles(cwd).profiles;
+    } catch {
+      /* keep the last known list */
+    }
+    return profiles;
   }
 
   /** reload + tool sync + warnings (runtime only — not during loading). */
@@ -483,7 +503,9 @@ export default function subagents(pi: ExtensionAPI, deps?: { manager?: SubagentM
     const cwd = ctx.cwd ?? process.cwd();
     const resumeId = params.resume?.trim() || undefined;
     const profileName = resumeId !== undefined ? (manager.record(resumeId)?.profile ?? params.profile) : params.profile;
-    const profile = profiles.find((p) => p.id === profileName);
+    // Re-read: a profile created or edited earlier in this turn is not in the
+    // turn-start snapshot yet.
+    const profile = currentProfiles(cwd).find((p) => p.id === profileName);
     if (!profile) {
       return textResult(`Unknown profile "${params.profile}". Available: ${profiles.map((p) => p.id).join(", ")}`, { owner: "subagents", status: "failed", title: params.title }, true);
     }
@@ -644,15 +666,17 @@ export default function subagents(pi: ExtensionAPI, deps?: { manager?: SubagentM
   // UNI-280: the Agent Graph (long-horizon) runs its work through this port.
   // Background-only; the graph owns completion (no completion notice here).
   const graphPort: GraphRunPort = {
-    profiles: () => (enabled && canSpawn() ? profiles.map((p) => p.id) : []),
+    // Fresh list: the graph validates a work item's profile against this, and
+    // a profile created earlier in this turn must be accepted, not refused.
+    profiles: () => (enabled && canSpawn() ? currentProfiles(uiCtx?.cwd ?? process.cwd()).map((p) => p.id) : []),
     start: (request) => {
       const ctx = uiCtx;
       if (ctx === undefined) return { error: "subagents are not ready (no session)", retryable: true };
       if (!enabled || !canSpawn()) return { error: "subagents are disabled in this session" };
-      const resumeProfile = request.resume !== undefined ? manager.record(request.resume)?.profile : undefined;
-      const profile = profiles.find((p) => p.id === (resumeProfile ?? request.profile));
-      if (!profile) return { error: `unknown subagent profile "${request.profile}" (available: ${profiles.map((p) => p.id).join(", ")})` };
       const cwd = ctx.cwd ?? process.cwd();
+      const resumeProfile = request.resume !== undefined ? manager.record(request.resume)?.profile : undefined;
+      const profile = currentProfiles(cwd).find((p) => p.id === (resumeProfile ?? request.profile));
+      if (!profile) return { error: `unknown subagent profile "${request.profile}" (available: ${profiles.map((p) => p.id).join(", ")})` };
       const start = manager.start({
         title: request.title,
         task: request.task,

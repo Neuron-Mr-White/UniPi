@@ -35,6 +35,7 @@ export const GRAPH_ORCHESTRATION_PROMPT = `<orchestration_mode>
 Graph Mode is active for this session. You are the main-agent supervisor beside the data path.
 - Use update_agent_graph to schedule bounded work onto child subagents when a graph materially improves the task. The host runs the work; do not call run_subagent for graph work.
 - Each add_work item needs a self-contained instruction (the child does not see this conversation). Give items a short work_id so later work can name them.
+- Each item's profile is your choice: pick per item (a read-only investigation uses subagent_explore; write-capable work uses subagent_general or a custom profile). view_agent_graph lists the profiles available right now; a profile you name that does not exist is refused.
 - Dependencies are input_ids: work ids (or result ids r-<work_id>) of this graph whose committed results the item consumes. Work waits until its inputs complete; the host attaches bounded upstream handoffs, so do not restate upstream conclusions in the instruction. You may declare the whole DAG in one update.
 - Use view_agent_graph to observe work status, operators, waits, failures and committed result ids.
 - After scheduling, call yield_agent_graph instead of polling, sleeping, or writing a waiting message. Yield ends only the current supervisor turn; the host wakes you at the next durable checkpoint (failure, nothing runnable, or everything settled) and the graph stays open.
@@ -55,7 +56,7 @@ Swarm Mode is active for this session. Treat the durable asynchronous agent grap
 - Perform only the lightweight exploration needed to establish boundaries before dispatch.
 - Make every item bounded and self-contained with an explicit scope, expected output, and constraints.
 - Avoid overlapping writes. Prefer read-only investigation (profile subagent_explore) unless isolated workspaces are available.
-- Schedule all independent items together with one update_agent_graph add_work (pick each item's profile). The host runs them; do not call run_subagent for swarm items.
+- Schedule all independent items together with one update_agent_graph add_work (pick each item's profile — view_agent_graph lists the profiles available right now; a read-only investigation uses subagent_explore, write-capable work uses subagent_general or a custom profile). The host runs them; do not call run_subagent for swarm items.
 - After scheduling, call yield_agent_graph. Do not poll, sleep, watch child logs, or wait synchronously; the host will wake you only when work needs attention or the whole swarm is settled.
 - On wake, call agent_swarm_status for compact statuses only. Read agent_output only for completed final results or narrow failed-item diagnosis.
 - Replace failed work with update_agent_graph using replaces=<failed work id> so the failed item no longer keeps the swarm in needs_attention. When all useful work is settled, finish the graph (operation=finish, result_ids, reason), deduplicate, verify, and semantically synthesize the results.
@@ -86,7 +87,7 @@ export interface GraphToolDeps {
 }
 
 /** Compact, model-facing view of one graph. */
-export function graphView(engine: GraphEngine, graph: GraphState, options: { history?: boolean } = {}): Record<string, unknown> {
+export function graphView(engine: GraphEngine, graph: GraphState, options: { history?: boolean; profiles?: readonly string[] } = {}): Record<string, unknown> {
   const status = (work: GraphWork) => engine.viewStatus(graph, work);
   const live = graph.work.filter((work) => work.status === "queued" || work.status === "running");
   const terminal = graph.work.filter((work) => work.status !== "queued" && work.status !== "running");
@@ -98,6 +99,9 @@ export function graphView(engine: GraphEngine, graph: GraphState, options: { his
     revision: graph.revision,
     state: graph.finish ? "finished" : graph.abandoned ? "stopped" : "open",
     counts: countStatuses(graph, status),
+    ...(options.profiles !== undefined && options.profiles.length > 0
+      ? { available_profiles: [...options.profiles] }
+      : {}),
     work: shown.map((work) => ({
       work_id: work.workId,
       status: status(work),
@@ -161,7 +165,7 @@ export function swarmStatus(engine: GraphEngine, graph: GraphState): Record<stri
 const workSchema = Type.Object({
   work_id: Type.Optional(Type.String({ description: "Short stable id for this work (e.g. scan-api). Later work names it in input_ids; its result id is r-<work_id>. Auto-assigned when omitted." })),
   instruction: Type.String({ description: "Bounded, self-contained instruction: scope, expected output, constraints. The child does not see this conversation." }),
-  profile: Type.Optional(Type.String({ description: `Subagent profile for new work (default ${DEFAULT_PROFILE}; subagent_explore for read-only investigation).` })),
+  profile: Type.Optional(Type.String({ description: `Subagent profile for this work (default ${DEFAULT_PROFILE}). Pick per work item: subagent_explore for read-only investigation, subagent_general for write-capable work on your model, or any custom profile listed in the Subagents section of your prompt. view_agent_graph reports the profiles available right now.` })),
   operator_id: Type.Optional(Type.String({ description: "Follow-up work on an EXISTING operator (from view_agent_graph): resumes that child's session. Omit for new work." })),
   input_ids: Type.Optional(Type.Array(Type.String(), { description: `Work ids or result ids (r-<work_id>) of THIS graph whose committed results this work consumes (its dependencies). Max ${MAX_INPUT_IDS}.` })),
   selected_result_inputs: Type.Optional(
@@ -270,11 +274,11 @@ export function registerGraphTools(pi: ExtensionAPI, deps: GraphToolDeps): void 
       const graph = p.graph_id ? engine.graph(p.graph_id) : engine.current();
       if (!graph) {
         if (p.history && engine.history().length > 0) {
-          return textResult(JSON.stringify({ current: null, history: engine.history().slice(0, 10).map((past) => ({ graph_id: past.graphId, task: past.task, state: past.finish ? "finished" : "stopped", selected_result_ids: past.finish?.resultIds ?? [] })) }, null, 2));
+          return textResult(JSON.stringify({ current: null, profiles: deps.profiles(), history: engine.history().slice(0, 10).map((past) => ({ graph_id: past.graphId, task: past.task, state: past.finish ? "finished" : "stopped", selected_result_ids: past.finish?.resultIds ?? [] })) }, null, 2));
         }
-        return textResult(p.graph_id ? `No graph ${p.graph_id}.` : "No agent graph yet — schedule work with update_agent_graph operation=add_work.");
+        return textResult(p.graph_id ? `No graph ${p.graph_id}. Available profiles: ${deps.profiles().join(", ") || "none"}.` : `No agent graph yet — schedule work with update_agent_graph operation=add_work. Available profiles: ${deps.profiles().join(", ") || "none"}.`);
       }
-      return textResult(JSON.stringify(graphView(engine, graph, { history: p.history === true }), null, 2));
+      return textResult(JSON.stringify(graphView(engine, graph, { history: p.history === true, profiles: deps.profiles() }), null, 2));
     },
   });
 

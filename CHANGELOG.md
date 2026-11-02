@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **A subagent profile created mid-turn works immediately.** The profile list was a snapshot taken at the start of each prompt, so an agent file written during a turn stayed invisible: `run_subagent` answered "Unknown profile" and graph work items naming it were refused. The next prompt — or `/reload` — was the only way to make it appear. The agent files are now re-read when a subagent starts and when the graph asks for the available profiles.
+  Do this: nothing.
+
+### Changed
+
+- **Graph and swarm show the profiles the model can pick.** `view_agent_graph` now lists `available_profiles`, and the orchestration prompts say that each work item's profile is a per-item choice (a read-only investigation uses `subagent_explore`, write-capable work uses `subagent_general` or a custom profile).
+  Do this: nothing.
+
 ## [3.0.0] — 2026-10-25
 
 UniPi 3.0 is the first stable release of the 3.x line. It replaces 2.20.5 as npm `latest`. Upgrade guide: [docs/guide/upgrade-3.0.md](https://github.com/Neuron-Mr-White/unipi/blob/main/docs/guide/upgrade-3.0.md).

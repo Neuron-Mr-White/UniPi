@@ -311,6 +311,8 @@ test("tool surface: register, add_work, view, swarm status, output, yield termin
   const view = JSON.parse((await tools.view_agent_graph!({})).content[0]!.text);
   assert.equal(view.work[0].result_id, "r-a");
   assert.equal(view.work[0].operator_id, "op1");
+  // The model picks each item's profile — it must see which ones exist.
+  assert.deepEqual(view.available_profiles, ["subagent_general", "subagent_explore"]);
   const out = await tools.agent_output!({ id: "r-a" });
   assert.match(out.content[0]!.text, /A report/);
   const fail = await tools.agent_output!({ id: "b" });
