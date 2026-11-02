@@ -6,10 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.0.1] — 2026-11-02
+
 ### Fixed
 
 - **A subagent profile created mid-turn works immediately.** The profile list was a snapshot taken at the start of each prompt, so an agent file written during a turn stayed invisible: `run_subagent` answered "Unknown profile" and graph work items naming it were refused. The next prompt — or `/reload` — was the only way to make it appear. The agent files are now re-read when a subagent starts and when the graph asks for the available profiles.
   Do this: nothing.
+- **A new session no longer adopts another session's goal, ralph loop, swarm or agent graph.** Long-horizon state is session-scoped now: `/new`, `/resume` of a different session, a new chat from the app and cron runs start clean instead of "repairing" (and re-running) the other session's in-flight work, waking and replying immediately. One run belongs to the session that started it. Resuming the session that started the run picks it up as before, and the first resume of the owning session picks up pre-3.0.1 runs (the old workspace-level files are adopted once, only when the session's own transcript proves it owned them). A new session in the same project gets a one-line note when another session holds a live graph — `/resume` it to follow it.
+  Do this: nothing. Old runs keep their state; resume the session that started them.
+
+### Added
+
+- **pi publishes the settings catalog for the app's Settings → UniPi screen.** Every module's settings (defaults, types, scopes, enum options) are written to `~/.unipi/config/settings-schema.json` on mount and on each session start; the UniPi host serves them with the current config layers so the app can read and change pi's settings with no pi running. Secret values never leave the PC — the host reports only which keys are set.
+  Do this: update the app to 1.0.1 and start pi once after updating — the catalog is written on mount.
 
 ### Changed
 

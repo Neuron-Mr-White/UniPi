@@ -11,7 +11,10 @@ file helpers, so packages work together without direct imports.
 
 - Defines the shared event names in `UNIPI_EVENTS` and module names in `MODULES`.
 - Gives the settings engine. Each module registers a namespace. The
-  `/unipi:settings` hub shows all namespaces.
+  `/unipi:settings` hub shows all namespaces, and pi publishes the whole
+  catalog to `~/.unipi/config/settings-schema.json` so the UniPi app's
+  Settings → UniPi screen can show and change pi's settings (served by the
+  unipi-host; secret values stay on the PC).
 - Gives the state layout under `~/.unipi/`. Each module gets `global`, `config`,
   `state` and `session` folders.
 - Gives the turn arbiter, harness message metadata and the shared TUI kit.

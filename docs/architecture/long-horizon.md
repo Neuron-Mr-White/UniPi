@@ -72,7 +72,9 @@ back.
 Each owner has a lease `{ownerId, generation}`. A park and a resume each add 1 to the
 generation. A tool call from a turn before the park carries the old
 generation, and the coordinator rejects it. The coordinator writes its state
-to `~/.unipi/workspace/<id>/state/long-horizon/state.json` on each transition.
+to `~/.unipi/workspace/<id>/state/long-horizon/sessions/<sessionId>/state.json` on each
+transition — state is session-scoped: a run belongs to the session that started it, and
+new sessions start clean (with a one-line note when another session holds a live graph).
 Crash recovery is a file read, not a replay.
 
 ### Propose and verify
@@ -121,8 +123,9 @@ agent graph (`agent-graph-stream-scheduling-draft.md`), sized for UniPi:
   capped at 16 KB each and 48 KB total. Steps refused for capacity stay
   queued and retry.
 - **Durable.** The graph lives in
-  `~/.unipi/workspace/<id>/state/long-horizon/graph.json` (current graph +
-  20 past ones), rewritten atomically on every change.
+  `~/.unipi/workspace/<id>/state/long-horizon/sessions/<sessionId>/graph.json`
+  (current graph + 20 past ones; session-scoped — a run belongs to the session
+  that started it), rewritten atomically on every change.
   - On `session_shutdown` the graph is frozen before subagents cancels its
     children.
   - On the next `session_start`, each interrupted step resumes once in its

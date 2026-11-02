@@ -111,9 +111,7 @@ Next comes the active owner, then the judge, then `defaultMode`. The gate adds
 the mode prompt and filters the tool list. Within one mode, the tool list stays
 the same, so the prefix cache stays valid.
 
-The engine keeps owner state in `~/.unipi/workspace/<id>/state/long-horizon/`.
-Ralph checklists are in the `ralph/` folder there. Owners do not start inside a
-child agent.
+The engine keeps owner state in `~/.unipi/workspace/<id>/state/long-horizon/sessions/<sessionId>/` — a run belongs to the session that started it, so a new session starts clean (it gets a one-line note when another session holds a live graph; resuming the owning session continues it, and the first resume of the owning session picks up pre-3.0.1 runs). Ralph checklists are in the `ralph/` folder there. Owners do not start inside a child agent.
 
 Read [Long-horizon architecture](../../docs/architecture/long-horizon.md) and
 [Turn arbiter](../../docs/architecture/turn-arbiter.md).
