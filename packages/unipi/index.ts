@@ -10,7 +10,7 @@
  */
 
 import type { ExtensionAPI, ToolDefinition } from "@earendil-works/pi-coding-agent";
-import { installArbiter, installHarnessProvenance, installPendingWorkMonitor, migrateState, sweepOrphanSessions, withCommandEcho } from "@pi-unipi/core";
+import { installArbiter, installHarnessProvenance, installPendingWorkMonitor, migrateState, sweepOrphanSessions, withCommandEcho, writeSettingsSnapshot } from "@pi-unipi/core";
 import { withHarnessToolAnnotations } from "@pi-unipi/utility";
 import { readUtilSettings, simpleWrapTool, simpleWrapped, installSimpleGroupEvents } from "@pi-unipi/utility";
 
@@ -155,4 +155,21 @@ export default function (pi: ExtensionAPI) {
       }
     }
   }
+
+  // Publish the settings catalog for the host/app (Settings → UniPi reads
+  // ~/.unipi/config/settings-schema.json). Best-effort like every install:
+  // here once everything has mounted, and again on each session_start (some
+  // modules register their schemas lazily).
+  try {
+    writeSettingsSnapshot();
+  } catch {
+    // Never block startup on the snapshot.
+  }
+  api.on("session_start", () => {
+    try {
+      writeSettingsSnapshot();
+    } catch {
+      // Same: a failed publish must not break the session.
+    }
+  });
 }

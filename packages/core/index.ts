@@ -41,6 +41,7 @@ export * from "./src/workspace/state-migration.js";
 export * from "./src/settings/paths.js";
 export * from "./src/settings/engine.js";
 export * from "./src/settings/schema.js";
+export * from "./src/settings/snapshot.js";
 export { SettingsHub, type SettingsHubDeps } from "./src/settings/hub.js";
 export { openSettingsHub } from "./src/settings/open.js";
 export * from "./src/attach/detect.js";
