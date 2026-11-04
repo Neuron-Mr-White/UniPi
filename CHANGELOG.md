@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.0.3] — 2026-11-04
+
 ### Fixed
 
 - **Pi stops warning about — and installing — a second copy of its own runtime** ([#43](https://github.com/Neuron-Mr-White/UniPi/issues/43)). `@pi-unipi/compactor` and `@pi-unipi/subagents` declared `@earendil-works/pi-agent-core`, and `@pi-unipi/background-tasks` declared `@earendil-works/pi-ai`, under `dependencies`. Pi supplies those five packages itself, so a published `dependencies` entry makes npm install them next to the host: on the reporter's PC that was 0.87.1's `pi-agent-core`, `pi-ai`, `chord` and `pi-telemetry` (≈15 MB, 8 lock entries) while Pi 1.5.0 was already running, and every start printed `Host-provided extension packages must be declared in peerDependencies with a "*" range, not dependencies`. Every one of those imports is `import type` only (`subagents` never imports the package at all), so no copy is needed at runtime: the entries moved to `peerDependencies`, keeping the usual `^0.87.1` gate. Each of the three now also declares every host package its source imports — `@earendil-works/pi-ai` was undeclared in `subagents` and `background-tasks`.
