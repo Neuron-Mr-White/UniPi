@@ -36,7 +36,7 @@ import {
 import { ModelPicker, type PickerModel, type PickerResult } from "./picker.js";
 import { PresetEditor, type PresetEditorResult } from "./preset-editor.js";
 import { SidekickRuntime } from "./sidekick-runtime.js";
-import { estimateSavings } from "./savings.js";
+import { estimateSavings, NO_SIDEKICK_USAGE } from "./savings.js";
 import { EDIT_NUDGE, bashNudge, leadPolicy, sidekickSystemPrompt, type FusionIdentity } from "./prompts.js";
 import { isTrivialShell, BASH_NUDGE_EVERY } from "./nudge.js";
 import { registerFusionTools } from "./tools.js";
@@ -349,16 +349,22 @@ export default function fusionExtension(pi: ExtensionAPI): void {
   }
 
   function savingsStats(ctx: ExtensionContext): string {
-    if (active?.kind !== "fusion" || runtime === undefined) return "Fusion is not active — pick a Fusion pair with /unipi:model.";
+    // The runtime spawns on the first handoff, so an active pair with no runtime
+    // is "ready, nothing delegated yet" — not "Fusion off".
+    if (active?.kind !== "fusion") return "Fusion is not active — pick a Fusion pair with /unipi:model.";
     const reg = registryOf(ctx);
     const preset = loadPreset(ctx.cwd ?? process.cwd()).preset;
     const leadCost = costOf(findModel(reg, active.lead), preset.prices[active.lead]);
     const sidekickCost = costOf(findModel(reg, active.sidekick), preset.prices[active.sidekick]);
-    const savings = estimateSavings(runtime.usage, leadCost, sidekickCost);
+    const usage = runtime?.usage ?? NO_SIDEKICK_USAGE;
+    const savings = estimateSavings(usage, leadCost, sidekickCost);
     const pricing = leadCost === undefined && sidekickCost === undefined
       ? '\nPricing unavailable from provider — set "prices" in ~/.unipi/config/fusion/preset.json to estimate savings.'
       : "";
-    return `Sidekick tokens: in ${String(runtime.usage.input)} · out ${String(runtime.usage.output)} · cached ${String(runtime.usage.cacheRead)} · cache write ${String(runtime.usage.cacheWrite)}\nSidekick cost: $${savings.sidekickUsd.toFixed(2)} · at lead prices: $${savings.atLeadUsd.toFixed(2)} · saved: $${savings.savedUsd.toFixed(2)}\nHandoffs: ${String(runtime.reports.size)} · runtime alive: ${String(runtime.isAlive())} · busy: ${String(runtime.isBusy())}${pricing}`;
+    const state = runtime === undefined
+      ? "Sidekick: not started yet (spawns on the first handoff)"
+      : `Handoffs: ${String(runtime.reports.size)} · runtime alive: ${String(runtime.isAlive())} · busy: ${String(runtime.isBusy())}`;
+    return `Active pair: ${active.lead} ◆ ${active.sidekick}\nSidekick tokens: in ${String(usage.input)} · out ${String(usage.output)} · cached ${String(usage.cacheRead)} · cache write ${String(usage.cacheWrite)}\nSidekick cost: $${savings.sidekickUsd.toFixed(2)} · at lead prices: $${savings.atLeadUsd.toFixed(2)} · saved: $${savings.savedUsd.toFixed(2)}\n${state}${pricing}`;
   }
 
   pi.registerEntryRenderer("sidekick-step", (entry: { data?: { group?: string; label?: string } }, options: { expanded?: boolean }, theme) =>

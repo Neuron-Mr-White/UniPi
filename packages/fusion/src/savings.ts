@@ -1,6 +1,12 @@
 import type { PickerModel } from "./picker.js";
 import type { SidekickUsage } from "./sidekick-runtime.js";
 
+/**
+ * Usage of a sidekick that has not run yet. The runtime spawns on the first
+ * handoff, so an active pair reports these zeros before any token is spent.
+ */
+export const NO_SIDEKICK_USAGE: SidekickUsage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 };
+
 export function estimateSavings(
   usage: SidekickUsage,
   lead: PickerModel["cost"],
