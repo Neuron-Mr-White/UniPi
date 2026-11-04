@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **`@pi-unipi/notify` (and every other UniPi package) loads on OMP again** ([#41](https://github.com/Neuron-Mr-White/UniPi/issues/41)). The shared `@pi-unipi/core` barrel statically imported runtime values from `@earendil-works/pi-coding-agent` (`createLocalBashOperations`, `truncateTail`, `ExtensionRunner`, `parseSkillBlock`). A host whose pi surface lacks one of them — OMP's legacy-pi compatibility module has no `createLocalBashOperations` — failed module linking, so even notify, which never touches bash, could not be installed. Core now resolves those lazily and feature-detects them: on such hosts detachable bash steps aside (stock bash, no watchdog detach) and the rest works. A test keeps static named value imports out of core.
+  Do this: on OMP, `omp plugin install @pi-unipi/notify` (no need to pin 2.20.5 any more).
+- **Native macOS notifications no longer need Rosetta** ([#40](https://github.com/Neuron-Mr-White/UniPi/issues/40)). `node-notifier` moves from 10.0.1 to 12.1.0, whose bundled `terminal-notifier` v3 is a universal (arm64 + x86_64) binary, so Apple Silicon runs it natively and macOS stops warning about an Intel-only component; Intel Macs keep working. node-notifier 12 asks for Node ^22.22.2, ^24.15.0 or ≥26.
+  Do this: update.
+
 ## [3.0.1] — 2026-11-02
 
 ### Fixed
