@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **`/unipi:fusion-stats` shows the active pair before the first handoff.** The command answered "Fusion is not active — pick a Fusion pair with /unipi:model" in every session that had not delegated yet. It read the sidekick runtime — a process that starts on the first handoff — as the sign of Fusion being on. A picked pair now reports its lead and sidekick, zero tokens, and a "not started yet" state.
+  Do this: nothing.
+
 ## [3.0.1] — 2026-11-02
 
 ### Fixed

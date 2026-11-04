@@ -16,13 +16,13 @@ function model(provider: string, id: string): Record<string, unknown> {
 
 function setup(home: string, cwd: string, models: Record<string, unknown>[]) {
   const handlers = new Map<string, (event: any, ctx: any) => unknown>();
-  const calls = { setModel: [] as Record<string, unknown>[], thinking: [] as string[], notices: [] as string[], entryRenderers: new Map<string, (entry: { data?: unknown }, options: { expanded?: boolean }, theme: unknown) => unknown>() };
+  const calls = { setModel: [] as Record<string, unknown>[], thinking: [] as string[], notices: [] as string[], commands: new Map<string, (args: unknown, ctx: any) => unknown>(), entryRenderers: new Map<string, (entry: { data?: unknown }, options: { expanded?: boolean }, theme: unknown) => unknown>() };
   const pi = {
     on: (name: string, handler: (event: any, ctx: any) => unknown) => handlers.set(name, handler),
     registerTool: () => undefined,
     getActiveTools: () => ["read", "bash", "sidekick", "read_subagent"],
     setActiveTools: () => undefined,
-    registerCommand: () => undefined,
+    registerCommand: (name: string, spec: { handler: (args: unknown, ctx: any) => unknown }) => calls.commands.set(name, spec.handler),
     registerMessageRenderer: () => undefined,
     registerEntryRenderer: (type: string, renderer: (entry: { data?: unknown }, options: { expanded?: boolean }, theme: unknown) => unknown) => {
       calls.entryRenderers.set(type, renderer);
@@ -80,6 +80,38 @@ test("session_start restores a persisted Fusion lead when pi boots on sidekick",
     assert.deepEqual(calls.thinking, ["high"]);
     assert.equal(bus.get(UNIPI_EVENTS.FUSION_STATUS)?.leadName, "lead");
     assert.equal(bus.get(UNIPI_EVENTS.FUSION_STATUS)?.sidekickName, "side");
+  } finally {
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+  }
+});
+
+test("fusion-stats reports the active pair before the first handoff, not 'not active'", async () => {
+  const home = mkdtempSync(join("/tmp", "fusion-index-home-"));
+  const cwd = mkdtempSync(join("/tmp", "fusion-index-cwd-"));
+  const previousHome = process.env.HOME;
+  process.env.HOME = home;
+  try {
+    writePreset(home, { kind: "fusion", lead: "a/lead", sidekick: "b/side", leadEffort: "high", sidekickEffort: "low" });
+    const lead = model("a", "lead");
+    const side = model("b", "side");
+    const other = model("c", "other");
+    const { handlers, calls, ctx } = setup(home, cwd, [lead, side, other]);
+    await handlers.get("session_start")?.({}, { ...ctx, model: lead });
+    // The sidekick runtime is spawned on the first handoff: a session that has
+    // delegated nothing still has an active pair, and must say so.
+    calls.notices.length = 0;
+    await calls.commands.get("unipi:fusion-stats")?.("", ctx);
+    const report = calls.notices.at(-1) ?? "";
+    assert.doesNotMatch(report, /Fusion is not active/u);
+    assert.match(report, /Active pair: a\/lead ◆ b\/side/u);
+    assert.match(report, /Sidekick: not started yet/u);
+    assert.match(report, /saved: \$0\.00/u);
+    // The guard still fires once the user leaves Fusion.
+    handlers.get("model_select")?.({ model: other }, { ...ctx, model: other });
+    calls.notices.length = 0;
+    await calls.commands.get("unipi:fusion-stats")?.("", ctx);
+    assert.match(calls.notices.at(-1) ?? "", /Fusion is not active/u);
   } finally {
     if (previousHome === undefined) delete process.env.HOME;
     else process.env.HOME = previousHome;
