@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.0.2] — 2026-11-04
+
 ### Fixed
 
 - **`@pi-unipi/notify` (and every other UniPi package) loads on OMP again** ([#41](https://github.com/Neuron-Mr-White/UniPi/issues/41)). The shared `@pi-unipi/core` barrel statically imported runtime values from `@earendil-works/pi-coding-agent` (`createLocalBashOperations`, `truncateTail`, `ExtensionRunner`, `parseSkillBlock`). A host whose pi surface lacks one of them — OMP's legacy-pi compatibility module has no `createLocalBashOperations` — failed module linking, so even notify, which never touches bash, could not be installed. Core now resolves those lazily and feature-detects them: on such hosts detachable bash steps aside (stock bash, no watchdog detach) and the rest works. A test keeps static named value imports out of core.
