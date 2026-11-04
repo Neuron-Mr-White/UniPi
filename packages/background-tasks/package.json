@@ -9,7 +9,6 @@
     "test": "npx tsx --test src/__tests__/*.test.ts"
   },
   "dependencies": {
-    "@earendil-works/pi-ai": "^0.87.1",
     "@pi-unipi/core": "3.0.2",
     "turndown": "^7.2.4"
   },
@@ -18,6 +17,7 @@
     "typescript": "^5.8.3"
   },
   "peerDependencies": {
+    "@earendil-works/pi-ai": "^0.87.1",
     "@earendil-works/pi-coding-agent": "^0.87.1",
     "@earendil-works/pi-tui": "^0.87.1",
     "typebox": "^1.1.38"
