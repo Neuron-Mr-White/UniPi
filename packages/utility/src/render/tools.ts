@@ -31,7 +31,7 @@ import {
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth, wrapTextWithAnsi, type Component } from "@earendil-works/pi-tui";
-import { createDetachableBashOperations, withDetachableBash } from "@pi-unipi/core";
+import { createDetachableBashOperations, detachableBashSupported, withDetachableBash } from "@pi-unipi/core";
 import { asJson, diffStats, exitCode, parseDiff, splitCommand, stripStatus, testSummary } from "./parse.js";
 import { simpleWrapTool } from "./simple.js";
 import { withHarnessToolAnnotations } from "./harness.js";
@@ -176,6 +176,8 @@ function detachableBashOpts(bash: PiToolOptions["bash"]): PiToolOptions["bash"] 
 
 /** `createBashToolDefinition` + detachable-bash operations/execute wrapping, in one call. */
 function createDetachableBashToolDefinition(cwd: string, bash: PiToolOptions["bash"]): AnyDef {
+  // Hosts without createLocalBashOperations (e.g. OMP, GH #41): stock bash, no detach.
+  if (!detachableBashSupported()) return createBashToolDefinition(cwd, bash) as AnyDef;
   const definition = withDetachableBash(createBashToolDefinition(cwd, detachableBashOpts(bash)) as AnyDef);
   const original = definition.renderResult;
   return { ...definition, renderResult: (res, options, theme, context) => {

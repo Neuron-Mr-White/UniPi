@@ -12,7 +12,10 @@
  * failures never block the command itself.
  */
 
-import { ExtensionRunner, type ExtensionAPI, type ExtensionCommandContext, type RegisteredCommand } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionCommandContext, RegisteredCommand } from "@earendil-works/pi-coding-agent";
+// Namespace import (GH #41): a missing runtime export must not break linking
+// of the whole @pi-unipi/core barrel on non-stock pi hosts (e.g. OMP).
+import * as piAgent from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 
 export const COMMAND_ECHO_TYPE = "unipi-command-echo";
@@ -121,7 +124,9 @@ let runnerPatched = false;
 export function patchExtensionRunnerCommandCompleters(): void {
   if (runnerPatched) return;
   runnerPatched = true;
-  const proto = ExtensionRunner.prototype as unknown as {
+  const Runner = (piAgent as unknown as { ExtensionRunner?: { prototype: unknown } }).ExtensionRunner;
+  if (typeof Runner !== "function") return; // Host without ExtensionRunner: no-op.
+  const proto = Runner.prototype as unknown as {
     resolveRegisteredCommands: () => Array<{ invocationName: string; name: string; getArgumentCompletions?: ArgCompleter }>;
   };
   const original = proto.resolveRegisteredCommands;

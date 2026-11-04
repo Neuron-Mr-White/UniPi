@@ -3,7 +3,35 @@ import { EventEmitter } from "node:events";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createLocalBashOperations, truncateTail, type BashOperations, type ToolDefinition } from "@earendil-works/pi-coding-agent";
+import type { BashOperations, ToolDefinition } from "@earendil-works/pi-coding-agent";
+// Namespace import on purpose (GH #41): a static named import of a runtime
+// value hard-fails module linking on hosts whose pi-coding-agent surface lacks
+// it (e.g. OMP's legacy-pi compat module has no createLocalBashOperations),
+// which used to break EVERY package importing the @pi-unipi/core barrel —
+// even notify, which never touches bash. Resolve lazily and feature-detect.
+import * as piAgent from "@earendil-works/pi-coding-agent";
+
+type LocalBashFactory = (options?: { shellPath?: string }) => BashOperations;
+type TruncateTail = (text: string) => {
+  content: string; truncated: boolean; totalLines: number; outputLines: number;
+  outputBytes: number; lastLinePartial?: boolean; truncatedBy?: string | null;
+};
+const host = piAgent as unknown as { createLocalBashOperations?: LocalBashFactory; truncateTail?: TruncateTail };
+
+/** True when the running pi host exposes what detachable bash needs. Hosts
+ *  without it (OMP's legacy-pi compat layer) should keep their stock bash. */
+export function detachableBashSupported(): boolean {
+  return typeof host.createLocalBashOperations === "function";
+}
+
+/** Minimal tail truncation used only if the host lacks `truncateTail`. */
+function fallbackTruncateTail(text: string): ReturnType<TruncateTail> {
+  const lines = text.split("\n");
+  const max = 2000;
+  const kept = lines.length > max ? lines.slice(-max) : lines;
+  return { content: kept.join("\n"), truncated: lines.length > max, totalLines: lines.length,
+    outputLines: kept.length, outputBytes: Buffer.byteLength(kept.join("\n")), lastLinePartial: false, truncatedBy: lines.length > max ? "lines" : null };
+}
 
 export class ProxyChild extends EventEmitter {
   readonly stdout = new EventEmitter();
@@ -42,7 +70,11 @@ class DetachedBash extends Error {
 }
 
 export function createDetachableBashOperations(options?: { shellPath?: string }): BashOperations {
-  const local = createLocalBashOperations({ shellPath: options?.shellPath });
+  const factory = host.createLocalBashOperations;
+  if (typeof factory !== "function") {
+    throw new Error("createDetachableBashOperations: this pi host does not export createLocalBashOperations (check detachableBashSupported() first)");
+  }
+  const local = factory({ shellPath: options?.shellPath });
   return {
     async exec(command, cwd, opts) {
       const id = context.getStore()?.toolCallId;
@@ -119,7 +151,7 @@ export function withDetachableBash<T extends ToolDefinition>(definition: T): T {
     catch (error) {
       if (!(error instanceof DetachedBash)) throw error;
       const full = error.output.toString("utf8");
-      const truncation = truncateTail(full);
+      const truncation = (host.truncateTail ?? fallbackTruncateTail)(full);
       let text = truncation.content || "(no output)";
       let fullOutputPath: string | undefined;
       if (truncation.truncated) {

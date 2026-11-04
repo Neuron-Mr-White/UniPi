@@ -31,7 +31,16 @@
  * boundaries purge everything outstanding — the failure mode is always native
  * fallback, never a human message mislabelled.
  */
-import { parseSkillBlock, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+// Namespace import (GH #41): resolve parseSkillBlock lazily so hosts lacking
+// it don't break linking of the whole @pi-unipi/core barrel.
+import * as piAgent from "@earendil-works/pi-coding-agent";
+
+type ParseSkillBlock = (text: string) => { name: string; userMessage?: string | null } | null;
+const parseSkillBlock: ParseSkillBlock = (text) => {
+  const fn = (piAgent as unknown as { parseSkillBlock?: ParseSkillBlock }).parseSkillBlock;
+  return typeof fn === "function" ? fn(text) : null;
+};
 
 export type HarnessDelivery =
   | "direct"
